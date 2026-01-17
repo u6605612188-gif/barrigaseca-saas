@@ -30,7 +30,25 @@ function getStripe() {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
   if (!secretKey) throw new Error("ENV ausente: STRIPE_SECRET_KEY");
 
+  // Mantive como está no seu projeto para não quebrar ambiente.
   return new Stripe(secretKey, { apiVersion: "2025-12-15.clover" });
+}
+
+// ---------- Type helpers ----------
+function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  // Em algumas versões do SDK/types, `subscription` não existe no tipo `Invoice`,
+  // mas o campo pode vir no payload real do Stripe. Então fazemos um fallback seguro.
+  const sub = (invoice as unknown as { subscription?: unknown }).subscription;
+
+  if (!sub) return null;
+  if (typeof sub === "string") return sub;
+
+  if (typeof sub === "object" && sub && "id" in (sub as any)) {
+    const id = (sub as any).id;
+    return typeof id === "string" ? id : null;
+  }
+
+  return null;
 }
 
 // ---------- Firestore lookups ----------
@@ -180,10 +198,7 @@ export async function POST(req: Request) {
         const customerId =
           typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id ?? null;
 
-        const subscriptionId =
-          typeof invoice.subscription === "string"
-            ? invoice.subscription
-            : invoice.subscription?.id ?? null;
+        const subscriptionId = getInvoiceSubscriptionId(invoice);
 
         const line = invoice.lines?.data?.[0];
         const periodEndUnix = line?.period?.end;
