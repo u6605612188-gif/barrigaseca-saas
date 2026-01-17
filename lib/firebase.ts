@@ -1,6 +1,10 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, initializeFirestore } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  Firestore,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
@@ -17,10 +21,23 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
-// ✅ Fix Vercel/Browser: força long-polling (sem useFetchStreams)
-export const db =
-  typeof window !== "undefined"
-    ? initializeFirestore(app, {
-        experimentalForceLongPolling: true,
-      })
-    : getFirestore(app);
+/**
+ * Firestore singleton (evita recriar instância no client e dar "offline" / handshake).
+ */
+let _db: Firestore | null = null;
+
+export const db: Firestore = (() => {
+  // Server: usar getFirestore normal
+  if (typeof window === "undefined") {
+    return getFirestore(app);
+  }
+
+  // Client: reutilizar instância
+  if (_db) return _db;
+
+  _db = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  });
+
+  return _db;
+})();
