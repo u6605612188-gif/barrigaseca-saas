@@ -5,6 +5,14 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 
+/**
+ * ✅ FIX BUILD (Vercel / Next prerender):
+ * /vip não pode ser prerenderizado estático porque depende de auth + querystring.
+ * Força render dinâmico em runtime.
+ */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type CheckoutResponse = {
   url?: string;
   error?: string;
@@ -52,7 +60,7 @@ export default function VipPage() {
   async function handleCheckout() {
     if (loading) return;
 
-    // ✅ política: checkout só com usuário logado (pra garantir uid no webhook)
+    // ✅ checkout só com usuário logado (garante uid no webhook)
     if (!authReady) return;
     if (!uid) {
       router.push("/login");
