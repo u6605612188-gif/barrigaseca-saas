@@ -122,6 +122,54 @@ export default function FreePage() {
           >
             Virar VIP e liberar 30 dias
           </a>
+
+          <a
+            href="/app"
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #111",
+              fontWeight: 900,
+              textDecoration: "none",
+              color: "#111",
+              background: "#fff",
+            }}
+          >
+            Abrir App (membro)
+          </a>
+        </div>
+
+        {/* HUB VIP */}
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 14, fontWeight: 950, color: "#111", marginBottom: 10 }}>
+            Área VIP (rápido acesso)
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            }}
+          >
+            <VipFeatureCard
+              title="Checklist de hábitos"
+              desc="Rotina diária com execução simples. Consistência vira resultado."
+              href="/vip/checklist"
+              badge="VIP"
+            />
+            <VipFeatureCard
+              title="Metas"
+              desc="Defina meta semanal e acompanhe o progresso com clareza."
+              href="/vip/metas"
+              badge="VIP"
+            />
+          </div>
+
+          <div style={{ marginTop: 10, color: "#666", fontSize: 12, lineHeight: 1.5 }}>
+            Observação: o bloqueio “VIP de verdade” a gente consolida no Firestore (regras + flag no
+            user). Por enquanto é navegação + tela.
+          </div>
         </div>
 
         <div style={{ marginTop: 12, color: "#666", fontSize: 13 }}>
@@ -296,28 +344,62 @@ export default function FreePage() {
         }}
       >
         <h3 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>
-          Quer o calendário completo + progresso?
+          Quer o calendário completo + evolução?
         </h3>
         <p style={{ color: "#555", marginTop: 8, lineHeight: 1.5 }}>
-          No VIP você desbloqueia os 30 dias, receitas completas, treinos guiados e (depois)
-          vamos adicionar acompanhamento e metas.
+          No VIP você desbloqueia os 30 dias, receitas completas, treinos guiados e agora
+          também: <strong>Checklist</strong> + <strong>Metas</strong>.
         </p>
 
-        <a
-          href="/vip"
-          style={{
-            display: "inline-block",
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #111",
-            fontWeight: 900,
-            textDecoration: "none",
-            color: "#fff",
-            background: "#111",
-          }}
-        >
-          Virar VIP
-        </a>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <a
+            href="/vip"
+            style={{
+              display: "inline-block",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #111",
+              fontWeight: 900,
+              textDecoration: "none",
+              color: "#fff",
+              background: "#111",
+            }}
+          >
+            Virar VIP
+          </a>
+
+          <a
+            href="/vip/metas"
+            style={{
+              display: "inline-block",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ddd",
+              fontWeight: 900,
+              textDecoration: "none",
+              color: "#111",
+              background: "#fff",
+            }}
+          >
+            Ver Metas (VIP)
+          </a>
+
+          <a
+            href="/vip/checklist"
+            style={{
+              display: "inline-block",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ddd",
+              fontWeight: 900,
+              textDecoration: "none",
+              color: "#111",
+              background: "#fff",
+            }}
+          >
+            Ver Checklist (VIP)
+          </a>
+        </div>
       </section>
     </main>
   );
@@ -331,6 +413,53 @@ const navBtn: React.CSSProperties = {
   cursor: "pointer",
   background: "#fff",
 };
+
+function VipFeatureCard({
+  title,
+  desc,
+  href,
+  badge,
+}: {
+  title: string;
+  desc: string;
+  href: string;
+  badge: string;
+}) {
+  return (
+    <a
+      href={href}
+      style={{
+        textDecoration: "none",
+        color: "#111",
+        borderRadius: 18,
+        border: "1px solid #eee",
+        background: "#fff",
+        padding: 16,
+        display: "block",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontSize: 16, fontWeight: 950 }}>{title}</div>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 950,
+            padding: "6px 10px",
+            borderRadius: 999,
+            border: "1px solid #111",
+            background: "#111",
+            color: "#fff",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {badge}
+        </div>
+      </div>
+      <div style={{ marginTop: 10, color: "#555", fontWeight: 700, lineHeight: 1.5 }}>{desc}</div>
+      <div style={{ marginTop: 12, fontWeight: 950 }}>Abrir →</div>
+    </a>
+  );
+}
 
 function DayContent({ dayPlan }: { dayPlan: DayDoc }) {
   const title =
@@ -376,7 +505,7 @@ function LockedPreview() {
         <li>Treino completo do dia</li>
         <li>Receitas detalhadas (porções e substituições)</li>
         <li>Checklist de hábitos</li>
-        <li>Progresso (em breve)</li>
+        <li>Metas</li>
       </ul>
 
       <div
@@ -390,7 +519,7 @@ function LockedPreview() {
           fontWeight: 700,
         }}
       >
-        Prévia: “Treino do Dia + Cardápio do Dia + Checklist”
+        Prévia: “Treino do Dia + Cardápio do Dia + Checklist + Metas”
       </div>
     </div>
   );

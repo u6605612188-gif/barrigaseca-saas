@@ -1,250 +1,350 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  createUserWithEmailAndPassword,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
   type User,
 } from "firebase/auth";
-import { initializeApp, getApps } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
 import { auth } from "../../lib/firebase";
 
-type Mode = "login" | "register";
-
-// ✅ Firestore client (sem depender de export no lib/firebase)
-function getDb() {
-  const firebaseConfig = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-  };
-
-  // fail-fast
-  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
-    throw new Error(
-      "ENV do Firebase ausente. Verifique .env.local: NEXT_PUBLIC_FIREBASE_API_KEY / AUTH_DOMAIN / PROJECT_ID"
-    );
-  }
-
-  if (!getApps().length) initializeApp(firebaseConfig);
-  return getFirestore();
+function formatErr(e: unknown) {
+  const msg =
+    typeof e === "object" && e && "message" in e ? String((e as any).message) : String(e);
+  const code =
+    typeof e === "object" && e && "code" in e ? String((e as any).code) : "";
+  return code ? `${code}: ${msg}` : msg;
 }
 
-async function upsertUserProfile(u: User) {
-  const db = getDb();
-  const ref = doc(db, "users", u.uid);
-
-  await setDoc(
-    ref,
-    {
-      uid: u.uid,
-      email: u.email ?? null,
-      vip: false,
-      vipUntil: null,
-      stripeCustomerId: null,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      lastLoginAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+function friendlyAuthError(raw: string) {
+  // mapeamento curto e objetivo (padrão corp)
+  if (raw.includes("auth/unauthorized-domain"))
+    return "Domínio não autorizado no Firebase (Authorized domains).";
+  if (raw.includes("auth/invalid-email")) return "E-mail inválido.";
+  if (raw.includes("auth/user-not-found")) return "Usuário não encontrado.";
+  if (raw.includes("auth/wrong-password")) return "Senha incorreta.";
+  if (raw.includes("auth/too-many-requests"))
+    return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+  if (raw.includes("auth/email-already-in-use"))
+    return "Este e-mail já está cadastrado. Use “Entrar”.";
+  if (raw.includes("auth/weak-password"))
+    return "Senha fraca. Use no mínimo 6 caracteres.";
+  return raw;
 }
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("login");
+
+  const [loading, setLoading] = useState(true);
+  const [authedEmail, setAuthedEmail] = useState<string | null>(null);
+
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    try {
-      const em = email.trim().toLowerCase();
+  const mountedRef = useRef(true);
+  const timeoutRef = useRef<number | null>(null);
 
-      let user: User;
+  useEffect(() => {
+    mountedRef.current = true;
 
-      if (mode === "register") {
-        if (password.length < 6) throw new Error("Senha mínima: 6 caracteres");
-        if (password !== confirm) throw new Error("As senhas não conferem");
-        const cred = await createUserWithEmailAndPassword(auth, em, password);
-        user = cred.user;
-      } else {
-        const cred = await signInWithEmailAndPassword(auth, em, password);
-        user = cred.user;
+    const unsub = onAuthStateChanged(auth, (u: User | null) => {
+      if (!mountedRef.current) return;
+
+      if (u) {
+        setAuthedEmail(u.email ?? null);
+        // garante que não fica preso no login
+        router.replace("/app");
+        return;
       }
 
-      // ✅ cria/atualiza perfil no Firestore
-      await upsertUserProfile(user);
-
-      // ✅ fluxo principal do produto
-      router.push("/free");
-    } catch (err: any) {
-      setError(err?.message ?? "Erro ao autenticar");
-    } finally {
+      setAuthedEmail(null);
       setLoading(false);
+    });
+
+    return () => {
+      mountedRef.current = false;
+      unsub();
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    };
+  }, [router]);
+
+  const subtitle = useMemo(() => {
+    if (loading) return "Carregando…";
+    if (authedEmail) return `Logado como ${authedEmail}`;
+    return mode === "login"
+      ? "Entre para acessar a área do app e conteúdo VIP."
+      : "Crie sua conta para começar.";
+  }, [loading, authedEmail, mode]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (submitting) return;
+
+    setError(null);
+
+    const em = email.trim();
+    const pw = password;
+
+    if (!em) return setError("Informe seu e-mail.");
+    if (!pw || pw.length < 6) return setError("Informe uma senha com pelo menos 6 caracteres.");
+
+    try {
+      setSubmitting(true);
+
+      // fail-safe: se travar por qualquer motivo, libera e informa
+      timeoutRef.current = window.setTimeout(() => {
+        if (!mountedRef.current) return;
+        setSubmitting(false);
+        setError(
+          "Tempo excedido ao autenticar. Recarregue a página e tente novamente (verifique conexão)."
+        );
+      }, 12000);
+
+      if (mode === "login") {
+        await signInWithEmailAndPassword(auth, em, pw);
+      } else {
+        await createUserWithEmailAndPassword(auth, em, pw);
+      }
+
+      // Redireciona imediatamente (não depende do listener)
+      router.replace("/app");
+    } catch (e2) {
+      const raw = formatErr(e2);
+      setError(friendlyAuthError(raw));
+    } finally {
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+      setSubmitting(false);
     }
   }
 
+  async function handleLogout() {
+    try {
+      await signOut(auth);
+      setAuthedEmail(null);
+      setError(null);
+      setLoading(false);
+    } catch (e) {
+      setError(friendlyAuthError(formatErr(e)));
+    }
+  }
+
+  if (loading) {
+    return <main style={{ padding: 32 }}>Carregando…</main>;
+  }
+
   return (
-    <main style={{ padding: 32, maxWidth: 420, margin: "60px auto" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 8 }}>
-        Seja membro VIP
-      </h1>
+    <main style={styles.page}>
+      <div style={styles.bg} aria-hidden />
+      <div style={styles.shell}>
+        <section style={styles.card}>
+          <div style={styles.badge}>Barriga Seca • Acesso</div>
+          <h1 style={styles.h1}>{mode === "login" ? "Entrar" : "Criar conta"}</h1>
+          <p style={styles.sub}>{subtitle}</p>
 
-      <p style={{ marginBottom: 24, color: "#555" }}>
-        Entre para acessar o calendário completo, treinos e receitas.
-      </p>
+          {error && (
+            <div style={styles.errorBox}>
+              <div style={{ fontWeight: 950, marginBottom: 6 }}>Não foi possível continuar</div>
+              <div style={{ fontWeight: 800, color: "#444", lineHeight: 1.5 }}>{error}</div>
+            </div>
+          )}
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 14 }}>
-        <label>
-          <strong>E-mail</strong>
-          <input
-            type="email"
-            placeholder="seuemail@exemplo.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{
-              width: "100%",
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #ddd",
-            }}
-          />
-        </label>
+          <form onSubmit={handleSubmit} style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            <label style={styles.label}>
+              E-mail
+              <input
+                value={email}
+                onChange={(ev) => setEmail(ev.target.value)}
+                type="email"
+                placeholder="seuemail@gmail.com"
+                style={styles.input}
+                autoComplete="email"
+              />
+            </label>
 
-        <label>
-          <strong>Senha</strong>
-          <input
-            type="password"
-            placeholder="Mínimo 6 caracteres"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{
-              width: "100%",
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #ddd",
-            }}
-          />
-        </label>
+            <label style={styles.label}>
+              Senha
+              <input
+                value={password}
+                onChange={(ev) => setPassword(ev.target.value)}
+                type="password"
+                placeholder="••••••"
+                style={styles.input}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+              />
+            </label>
 
-        {mode === "register" && (
-          <label>
-            <strong>Confirmar senha</strong>
-            <input
-              type="password"
-              placeholder="Repita a senha"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 10,
-                border: "1px solid #ddd",
+            <button type="submit" disabled={submitting} style={styles.btnPrimary}>
+              {submitting ? "Processando…" : mode === "login" ? "Entrar" : "Criar conta"}
+            </button>
+          </form>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setMode((m) => (m === "login" ? "register" : "login"));
               }}
-            />
-          </label>
-        )}
+              style={styles.btnGhost}
+            >
+              {mode === "login" ? "Criar conta" : "Já tenho conta"}
+            </button>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            marginTop: 10,
-            padding: 14,
-            borderRadius: 12,
-            border: 0,
-            fontWeight: 800,
-            cursor: loading ? "not-allowed" : "pointer",
-            background: "#111",
-            color: "#fff",
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "Processando..." : mode === "login" ? "Entrar" : "Criar conta"}
-        </button>
+            <a href="/free" style={styles.btnGhostLink}>
+              Voltar pro calendário
+            </a>
 
-        {error && <p style={{ color: "crimson", margin: 0 }}>{error}</p>}
-      </form>
+            <a href="/vip" style={styles.btnDarkLink}>
+              Ver VIP
+            </a>
 
-      {/* Ação secundária */}
-      <div style={{ marginTop: 18, textAlign: "center" }}>
-        {mode === "login" ? (
-          <button
-            onClick={() => setMode("register")}
-            style={{
-              background: "none",
-              border: 0,
-              color: "#111",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Criar conta
-          </button>
-        ) : (
-          <button
-            onClick={() => setMode("login")}
-            style={{
-              background: "none",
-              border: 0,
-              color: "#111",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Já tenho conta
-          </button>
-        )}
-      </div>
+            <button type="button" onClick={handleLogout} style={styles.btnNeutral}>
+              Sair (se logado)
+            </button>
+          </div>
 
-      <div style={{ marginTop: 14, display: "flex", gap: 10, justifyContent: "center" }}>
-        <a
-          href="/free"
-          style={{
-            display: "inline-block",
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            fontWeight: 800,
-            textDecoration: "none",
-            color: "#111",
-          }}
-        >
-          Área grátis
-        </a>
-        <a
-          href="/vip"
-          style={{
-            display: "inline-block",
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #111",
-            fontWeight: 800,
-            textDecoration: "none",
-            color: "#fff",
-            background: "#111",
-          }}
-        >
-          Ver VIP
-        </a>
+          <div style={styles.footerNote}>
+            Auth: Email/Senha habilitado • Domínios autorizados atualizados • Se persistir, valide
+            console do navegador.
+          </div>
+        </section>
       </div>
     </main>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    padding: 18,
+    background: "#0b0b0f",
+    position: "relative",
+    overflow: "hidden",
+  },
+  bg: {
+    position: "absolute",
+    inset: 0,
+    background:
+      "radial-gradient(900px 500px at 20% 25%, rgba(255,255,255,0.08), transparent 60%), radial-gradient(900px 500px at 80% 70%, rgba(255,255,255,0.06), transparent 60%)",
+    pointerEvents: "none",
+  },
+  shell: {
+    width: "min(680px, 100%)",
+    margin: "40px auto",
+    position: "relative",
+    zIndex: 1,
+  },
+  card: {
+    padding: 18,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.92)",
+  },
+  badge: {
+    display: "inline-flex",
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(17,17,17,0.10)",
+    background: "#fff",
+    fontWeight: 950,
+    fontSize: 12,
+    color: "#111",
+  },
+  h1: {
+    margin: "10px 0 6px",
+    fontSize: 28,
+    fontWeight: 950,
+    color: "#111",
+  },
+  sub: {
+    margin: 0,
+    color: "#444",
+    fontWeight: 700,
+    lineHeight: 1.5,
+  },
+  label: {
+    display: "grid",
+    gap: 6,
+    fontWeight: 900,
+    color: "#111",
+    fontSize: 13,
+  },
+  input: {
+    padding: "12px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(17,17,17,0.14)",
+    outline: "none",
+    fontWeight: 800,
+  },
+  btnPrimary: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,17,17,0.12)",
+    background: "#111",
+    fontWeight: 950,
+    color: "#fff",
+    cursor: "pointer",
+  },
+  btnGhost: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,17,17,0.12)",
+    background: "#fff",
+    fontWeight: 950,
+    cursor: "pointer",
+  },
+  btnNeutral: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,17,17,0.12)",
+    background: "#e9e9e9",
+    fontWeight: 950,
+    cursor: "pointer",
+  },
+  btnGhostLink: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,17,17,0.12)",
+    background: "#fff",
+    fontWeight: 950,
+    textDecoration: "none",
+    color: "#111",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnDarkLink: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,17,17,0.12)",
+    background: "#111",
+    fontWeight: 950,
+    textDecoration: "none",
+    color: "#fff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid rgba(239,68,68,0.30)",
+    background: "rgba(239,68,68,0.08)",
+  },
+  footerNote: {
+    marginTop: 12,
+    fontSize: 12,
+    color: "#666",
+    fontWeight: 700,
+    lineHeight: 1.5,
+  },
+};
