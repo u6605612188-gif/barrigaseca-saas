@@ -17,11 +17,10 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
-// ✅ Fix offline (Vercel) com tipagem ok
+// ✅ Fix Vercel/Browser: força long-polling (sem useFetchStreams)
 export const db =
   typeof window !== "undefined"
     ? initializeFirestore(app, {
         experimentalForceLongPolling: true,
-        useFetchStreams: false,
       })
     : getFirestore(app);
