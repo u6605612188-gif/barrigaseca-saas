@@ -81,62 +81,104 @@ function formatErr(e: unknown) {
   return code ? `${code}: ${msg}` : msg;
 }
 
+function isOfflineErr(message: string) {
+  const m = (message || "").toLowerCase();
+  return (
+    m.includes("client is offline") ||
+    m.includes("unavailable") ||
+    m.includes("network") ||
+    m.includes("failed to get document") ||
+    m.includes("offline")
+  );
+}
+
 export default function ChecklistPage() {
   const router = useRouter();
 
-  const [authLoading, setAuthLoading] = useState(true);
+  // Auth
+  const [authReady, setAuthReady] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
 
+  // VIP
   const [isVip, setIsVip] = useState<boolean>(false);
   const [vipLoading, setVipLoading] = useState(true);
 
+  // Day / Habits
   const [day] = useState<string>(() => ymd(new Date()));
   const [items, setItems] = useState<Record<HabitKey, boolean>>(defaultItems());
   const [saving, setSaving] = useState(false);
 
+  // Stats
   const [streak, setStreak] = useState<number>(0);
   const [bestStreak, setBestStreak] = useState<number>(0);
   const [statsLoading, setStatsLoading] = useState(true);
 
+  // UI
   const [screenError, setScreenError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   // -------- Auth gate --------
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
+      setUid(u?.uid ?? null);
+      setAuthReady(true);
+
       if (!u) {
-        router.push("/login");
-        return;
+        // Important: não deixe a tela presa em loading
+        router.replace("/login");
       }
-      setUid(u.uid);
-      setAuthLoading(false);
     });
+
     return () => unsub();
   }, [router]);
 
   // -------- VIP gate (users/{uid}.vip) --------
   useEffect(() => {
+    let cancelled = false;
+
     async function loadVip() {
-      if (!uid) return;
+      // auth ainda não resolveu -> não faz nada
+      if (!authReady) return;
+
+      // sem uid (não logado) -> encerra loading VIP
+      if (!uid) {
+        setVipLoading(false);
+        return;
+      }
+
       setScreenError(null);
 
       try {
         setVipLoading(true);
+
         const ref = doc(db, "users", uid);
         const snap = await getDoc(ref);
+
+        if (cancelled) return;
+
         const data = (snap.exists() ? (snap.data() as UserProfile) : {}) ?? {};
         setIsVip(data.vip === true);
       } catch (e) {
+        if (cancelled) return;
         setScreenError(formatErr(e));
       } finally {
+        if (cancelled) return;
         setVipLoading(false);
       }
     }
+
     loadVip();
-  }, [uid]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, uid, retryTick]);
 
   // -------- Load today doc --------
   useEffect(() => {
+    let cancelled = false;
+
     async function loadToday() {
+      if (!authReady) return;
       if (!uid) return;
       if (!isVip) return;
 
@@ -145,6 +187,8 @@ export default function ChecklistPage() {
       try {
         const ref = doc(db, "users", uid, "habits", day);
         const snap = await getDoc(ref);
+
+        if (cancelled) return;
 
         if (!snap.exists()) {
           setItems(defaultItems());
@@ -155,17 +199,24 @@ export default function ChecklistPage() {
         const merged = { ...defaultItems(), ...(data.items ?? {}) };
         setItems(merged);
       } catch (e) {
+        if (cancelled) return;
         setItems(defaultItems());
         setScreenError(formatErr(e));
       }
     }
 
     loadToday();
-  }, [uid, isVip, day]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, uid, isVip, day, retryTick]);
 
   // -------- Streak calc --------
   useEffect(() => {
+    let cancelled = false;
+
     async function loadStats() {
+      if (!authReady) return;
       if (!uid) return;
       if (!isVip) return;
 
@@ -177,6 +228,8 @@ export default function ChecklistPage() {
         const colRef = collection(db, "users", uid, "habits");
         const snap = await getDocs(colRef);
 
+        if (cancelled) return;
+
         const map = new Map<string, DailyHabitsDoc>();
         for (const d of snap.docs) {
           const data = d.data() as DailyHabitsDoc;
@@ -184,6 +237,7 @@ export default function ChecklistPage() {
           else map.set(d.id, { ...data, date: d.id } as DailyHabitsDoc);
         }
 
+        // streak atual (até 60 dias)
         let cur = 0;
         let cursor = new Date();
         for (let i = 0; i < 60; i++) {
@@ -197,6 +251,7 @@ export default function ChecklistPage() {
           break;
         }
 
+        // best streak (janela 120 dias)
         let best = 0;
         let run = 0;
         let scan = new Date();
@@ -215,24 +270,31 @@ export default function ChecklistPage() {
         setStreak(cur);
         setBestStreak(best);
       } catch (e) {
+        if (cancelled) return;
         setStreak(0);
         setBestStreak(0);
         setScreenError(formatErr(e));
       } finally {
+        if (cancelled) return;
         setStatsLoading(false);
       }
     }
 
     loadStats();
-  }, [uid, isVip]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, uid, isVip, retryTick]);
 
   const progress = useMemo(() => calcProgress(items), [items]);
 
   async function toggleHabit(k: HabitKey) {
+    if (!authReady) return;
     if (!uid) return;
     if (!isVip) return;
     if (saving) return;
 
+    const prev = items;
     const next = { ...items, [k]: !items[k] };
     setItems(next);
 
@@ -255,38 +317,94 @@ export default function ChecklistPage() {
 
       await setDoc(ref, payload, { merge: true });
     } catch (e) {
-      // rollback visual simples
-      setItems(items);
+      setItems(prev);
       setScreenError(formatErr(e));
     } finally {
       setSaving(false);
     }
   }
 
-  if (authLoading || vipLoading) {
+  // ----- Rendering -----
+
+  // Enquanto auth não resolve, mostra loading (curto e objetivo)
+  if (!authReady || vipLoading) {
     return <main style={{ padding: 28 }}>Carregando…</main>;
   }
 
+  // Se authReady e uid null, já foi mandado pro /login
+  if (!uid) {
+    return <main style={{ padding: 28 }}>Redirecionando…</main>;
+  }
+
   if (screenError) {
+    const msg = screenError;
+    const offline = isOfflineErr(msg);
+
     return (
       <main style={{ padding: 28, maxWidth: 980, margin: "28px auto" }}>
         <section style={card}>
           <h1 style={{ fontSize: 22, fontWeight: 950, margin: 0 }}>
             Erro ao carregar Checklist
           </h1>
+
           <p style={{ marginTop: 10, color: "#555", fontWeight: 800, lineHeight: 1.55 }}>
-            {screenError}
+            {msg}
           </p>
 
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: "1px solid #eee", background: "#fafafa" }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Ação recomendada</div>
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8, fontWeight: 800, color: "#222" }}>
-              <li>Validar regras do Firestore (read em <code>users/{`{uid}`}/habits</code> e <code>users/{`{uid}`}</code>)</li>
-              <li>Confirmar usuário autenticado</li>
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 14,
+              border: "1px solid #eee",
+              background: "#fafafa",
+            }}
+          >
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>
+              Ação recomendada
+            </div>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: 18,
+                lineHeight: 1.8,
+                fontWeight: 800,
+                color: "#222",
+              }}
+            >
+              {offline ? (
+                <>
+                  <li>
+                    Validar se o Firestore está habilitado no Firebase (Database criado).
+                  </li>
+                  <li>
+                    Confirmar que as variáveis <code>NEXT_PUBLIC_FIREBASE_*</code> estão iguais ao projeto correto.
+                  </li>
+                  <li>
+                    Tentar novamente (às vezes é handshake/rede).
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    Validar regras do Firestore (read em{" "}
+                    <code>users/{`{uid}`}/habits</code> e{" "}
+                    <code>users/{`{uid}`}</code>)
+                  </li>
+                  <li>Confirmar usuário autenticado</li>
+                </>
+              )}
             </ul>
           </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={() => setRetryTick((x) => x + 1)}
+              style={{ ...btnGhost, cursor: "pointer" }}
+            >
+              Tentar novamente
+            </button>
+
             <a href="/app" style={btnGhost}>Voltar</a>
             <a href="/vip" style={btnDark}>VIP</a>
           </div>
@@ -371,6 +489,7 @@ export default function ChecklistPage() {
 
         <div style={{ marginTop: 14, padding: 14, borderRadius: 16, border: "1px solid #eee", background: "#fff" }}>
           <div style={{ fontWeight: 950, fontSize: 16 }}>Hábitos de hoje</div>
+
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
             {HABITS.map((h) => {
               const checked = !!items[h.key];
@@ -396,6 +515,7 @@ export default function ChecklistPage() {
                     <div style={{ fontWeight: 950, color: "#111" }}>{h.title}</div>
                     <div style={{ marginTop: 4, fontWeight: 800, color: "#555" }}>{h.desc}</div>
                   </div>
+
                   <div
                     style={{
                       width: 34,
