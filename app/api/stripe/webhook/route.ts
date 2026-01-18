@@ -52,13 +52,6 @@ function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
 }
 
 // ---------- Firestore lookups ----------
-async function findUserDocByUid(uid: string) {
-  const db = getAdminDb();
-  const ref = db.collection("users").doc(uid);
-  const snap = await ref.get();
-  return snap.exists ? snap : null;
-}
-
 async function findUserDocByEmail(email: string) {
   const db = getAdminDb();
   const snap = await db
@@ -91,16 +84,38 @@ async function upsertVip(params: {
   vip: boolean;
   vipUntil?: Date | null;
 }) {
-  const { uid, email, stripeCustomerId, stripeSubscriptionId, vip, vipUntil } = params;
+  const { uid, email, stripeCustomerId, stripeSubscriptionId, vip, vipUntil } =
+    params;
 
+  const db = getAdminDb();
+
+  // ✅ PRIORIDADE MÁXIMA: se veio uid, grava direto em users/{uid} (cria o doc se não existir)
+  if (uid) {
+    const ref = db.collection("users").doc(uid);
+
+    await ref.set(
+      {
+        uid,
+        email: email ?? null,
+        vip,
+        stripeCustomerId: stripeCustomerId ?? null,
+        stripeSubscriptionId: stripeSubscriptionId ?? null,
+        vipUntil: vipUntil
+          ? admin.firestore.Timestamp.fromDate(vipUntil)
+          : null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return;
+  }
+
+  // Fallback: sem uid => tenta localizar por customerId/email
   let docRef:
     | FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
     | null = null;
-
-  if (uid) {
-    const snap = await findUserDocByUid(uid);
-    if (snap) docRef = snap.ref;
-  }
 
   if (!docRef && stripeCustomerId) {
     const snap = await findUserDocByStripeCustomerId(stripeCustomerId);
@@ -116,6 +131,7 @@ async function upsertVip(params: {
 
   await docRef.set(
     {
+      email: email ?? null,
       vip,
       stripeCustomerId: stripeCustomerId ?? null,
       stripeSubscriptionId: stripeSubscriptionId ?? null,
@@ -170,7 +186,9 @@ export async function POST(req: Request) {
             null)?.toLowerCase() ?? null;
 
         const customerId =
-          typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
+          typeof session.customer === "string"
+            ? session.customer
+            : session.customer?.id ?? null;
 
         const subscriptionId =
           typeof session.subscription === "string"
@@ -196,7 +214,9 @@ export async function POST(req: Request) {
         const email = (invoice.customer_email ?? null)?.toLowerCase() ?? null;
 
         const customerId =
-          typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id ?? null;
+          typeof invoice.customer === "string"
+            ? invoice.customer
+            : invoice.customer?.id ?? null;
 
         const subscriptionId = getInvoiceSubscriptionId(invoice);
 
@@ -219,7 +239,9 @@ export async function POST(req: Request) {
         const sub = event.data.object as Stripe.Subscription;
 
         const customerId =
-          typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+          typeof sub.customer === "string"
+            ? sub.customer
+            : sub.customer?.id ?? null;
 
         const subscriptionId = sub.id ?? null;
 
