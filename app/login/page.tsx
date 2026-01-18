@@ -10,7 +10,13 @@ import {
   type User,
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 
 function formatErr(e: unknown) {
   const msg =
@@ -26,32 +32,43 @@ function friendlyAuthError(raw: string) {
   if (raw.includes("auth/invalid-email")) return "E-mail inválido.";
   if (raw.includes("auth/user-not-found")) return "Usuário não encontrado.";
   if (raw.includes("auth/wrong-password")) return "Senha incorreta.";
-  if (raw.includes("auth/invalid-credential")) return "E-mail ou senha incorretos.";
   if (raw.includes("auth/too-many-requests"))
     return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
   if (raw.includes("auth/email-already-in-use"))
     return "Este e-mail já está cadastrado. Use “Entrar”.";
   if (raw.includes("auth/weak-password"))
     return "Senha fraca. Use no mínimo 6 caracteres.";
+  if (raw.includes("auth/invalid-credential"))
+    return "Credenciais inválidas. Confira e-mail/senha.";
   return raw;
 }
 
-// ✅ Governança: garante que users/{uid} existe (sem sobrescrever vip existente)
+// ✅ Governança: garante users/{uid} sem derrubar vip existente
 async function ensureUserDoc(u: User) {
   const ref = doc(db, "users", u.uid);
+  const snap = await getDoc(ref);
 
-  await setDoc(
-    ref,
-    {
+  const email = (u.email ?? "").toLowerCase();
+
+  if (!snap.exists()) {
+    // Primeiro cadastro: cria com vip=false
+    await setDoc(ref, {
       uid: u.uid,
-      email: (u.email ?? "").toLowerCase(),
-      vip: false, // default; merge=true não derruba vip true se já existir
-      lastLoginAt: serverTimestamp(),
+      email,
+      vip: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+      lastLoginAt: serverTimestamp(),
+    });
+    return;
+  }
+
+  // Usuário já existe: atualiza só campos operacionais (NÃO toca no vip)
+  await updateDoc(ref, {
+    email,
+    updatedAt: serverTimestamp(),
+    lastLoginAt: serverTimestamp(),
+  });
 }
 
 export default function LoginPage() {
@@ -125,9 +142,7 @@ export default function LoginPage() {
       timeoutRef.current = window.setTimeout(() => {
         if (!mountedRef.current) return;
         setSubmitting(false);
-        setError(
-          "Tempo excedido ao autenticar. Recarregue a página e tente novamente (verifique conexão)."
-        );
+        setError("Tempo excedido ao autenticar. Recarregue a página e tente novamente.");
       }, 12000);
 
       let user: User | null = null;
@@ -164,7 +179,9 @@ export default function LoginPage() {
     }
   }
 
-  if (loading) return <main style={{ padding: 32 }}>Carregando…</main>;
+  if (loading) {
+    return <main style={{ padding: 32 }}>Carregando…</main>;
+  }
 
   return (
     <main style={styles.page}>
@@ -212,25 +229,18 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* CTA de cadastro/login com contraste real (não “some” no branco) */}
-          <div style={styles.ctaRow}>
-            <span style={styles.ctaText}>
-              {mode === "login" ? "Não tem conta?" : "Já tem conta?"}
-            </span>
-
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               type="button"
               onClick={() => {
                 setError(null);
                 setMode((m) => (m === "login" ? "register" : "login"));
               }}
-              style={styles.ctaLinkBtn}
+              style={styles.btnGhost}
             >
-              {mode === "login" ? "Criar conta" : "Fazer login"}
+              {mode === "login" ? "Criar conta" : "Já tenho conta"}
             </button>
-          </div>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <a href="/free" style={styles.btnGhostLink}>
               Voltar pro calendário
             </a>
@@ -245,7 +255,7 @@ export default function LoginPage() {
           </div>
 
           <div style={styles.footerNote}>
-            Auth: Email/Senha habilitado • Doc users/{`{uid}`} criado no login • VIP não é sobrescrito.
+            Auth: Email/Senha habilitado • users/{`{uid}`} garantido • VIP não é sobrescrito no login.
           </div>
         </section>
       </div>
@@ -325,6 +335,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fff",
     cursor: "pointer",
   },
+  btnGhost: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,17,17,0.12)",
+    background: "#fff",
+    fontWeight: 950,
+    cursor: "pointer",
+  },
   btnNeutral: {
     padding: "12px 14px",
     borderRadius: 14,
@@ -336,7 +354,7 @@ const styles: Record<string, React.CSSProperties> = {
   btnGhostLink: {
     padding: "12px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.18)",
+    border: "1px solid rgba(17,17,17,0.12)",
     background: "#fff",
     fontWeight: 950,
     textDecoration: "none",
@@ -370,27 +388,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#666",
     fontWeight: 700,
     lineHeight: 1.5,
-  },
-
-  // ✅ novo: CTA visível e óbvio
-  ctaRow: {
-    marginTop: 12,
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    flexWrap: "wrap",
-  },
-  ctaText: {
-    fontWeight: 800,
-    color: "#333",
-  },
-  ctaLinkBtn: {
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(17,17,17,0.22)",
-    background: "#f3f4f6",
-    fontWeight: 950,
-    color: "#111",
-    cursor: "pointer",
   },
 };

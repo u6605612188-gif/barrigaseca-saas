@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../../lib/firebase";
+import { auth, db } from "@/lib/firebase";
 
 type CheckoutResponse = {
   url?: string;
