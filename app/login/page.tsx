@@ -9,7 +9,8 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { auth } from "../../lib/firebase";
+import { auth, db } from "../../lib/firebase";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 
 function formatErr(e: unknown) {
   const msg =
@@ -20,7 +21,6 @@ function formatErr(e: unknown) {
 }
 
 function friendlyAuthError(raw: string) {
-  // mapeamento curto e objetivo (padrão corp)
   if (raw.includes("auth/unauthorized-domain"))
     return "Domínio não autorizado no Firebase (Authorized domains).";
   if (raw.includes("auth/invalid-email")) return "E-mail inválido.";
@@ -33,6 +33,24 @@ function friendlyAuthError(raw: string) {
   if (raw.includes("auth/weak-password"))
     return "Senha fraca. Use no mínimo 6 caracteres.";
   return raw;
+}
+
+// ✅ Governança: garante que users/{uid} existe (sem sobrescrever vip existente)
+async function ensureUserDoc(u: User) {
+  const ref = doc(db, "users", u.uid);
+
+  await setDoc(
+    ref,
+    {
+      uid: u.uid,
+      email: (u.email ?? "").toLowerCase(),
+      vip: false, // default. merge=true não derruba vip true se já existir.
+      lastLoginAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
 export default function LoginPage() {
@@ -54,12 +72,17 @@ export default function LoginPage() {
   useEffect(() => {
     mountedRef.current = true;
 
-    const unsub = onAuthStateChanged(auth, (u: User | null) => {
+    const unsub = onAuthStateChanged(auth, async (u: User | null) => {
       if (!mountedRef.current) return;
 
       if (u) {
+        try {
+          await ensureUserDoc(u);
+        } catch (e) {
+          setError(friendlyAuthError(formatErr(e)));
+        }
+
         setAuthedEmail(u.email ?? null);
-        // garante que não fica preso no login
         router.replace("/app");
         return;
       }
@@ -98,7 +121,6 @@ export default function LoginPage() {
     try {
       setSubmitting(true);
 
-      // fail-safe: se travar por qualquer motivo, libera e informa
       timeoutRef.current = window.setTimeout(() => {
         if (!mountedRef.current) return;
         setSubmitting(false);
@@ -107,13 +129,19 @@ export default function LoginPage() {
         );
       }, 12000);
 
+      let user: User | null = null;
+
       if (mode === "login") {
-        await signInWithEmailAndPassword(auth, em, pw);
+        const cred = await signInWithEmailAndPassword(auth, em, pw);
+        user = cred.user;
       } else {
-        await createUserWithEmailAndPassword(auth, em, pw);
+        const cred = await createUserWithEmailAndPassword(auth, em, pw);
+        user = cred.user;
       }
 
-      // Redireciona imediatamente (não depende do listener)
+      // ✅ cria/atualiza users/{uid} antes do redirect
+      if (user) await ensureUserDoc(user);
+
       router.replace("/app");
     } catch (e2) {
       const raw = formatErr(e2);
@@ -212,8 +240,7 @@ export default function LoginPage() {
           </div>
 
           <div style={styles.footerNote}>
-            Auth: Email/Senha habilitado • Domínios autorizados atualizados • Se persistir, valide
-            console do navegador.
+            Auth: Email/Senha habilitado • Doc users/{`{uid}`} criado automaticamente no login.
           </div>
         </section>
       </div>
