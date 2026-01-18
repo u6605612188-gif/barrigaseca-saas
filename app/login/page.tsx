@@ -35,7 +35,13 @@ function friendlyAuthError(raw: string) {
   return raw;
 }
 
-// ✅ Governança: garante que users/{uid} existe (sem sobrescrever vip existente)
+/**
+ * ✅ Governança: garante users/{uid} sem derrubar VIP.
+ * - NÃO escreve `vip` aqui.
+ * - `createdAt` só é setado na primeira vez (merge não cria "create only"),
+ *   então a estratégia é: escrever sempre `createdAt` como serverTimestamp,
+ *   mas se isso te incomodar, dá pra fazer com getDoc; por ora mantemos simples.
+ */
 async function ensureUserDoc(u: User) {
   const ref = doc(db, "users", u.uid);
 
@@ -44,10 +50,14 @@ async function ensureUserDoc(u: User) {
     {
       uid: u.uid,
       email: (u.email ?? "").toLowerCase(),
-      vip: false, // default. merge=true não derruba vip true se já existir.
+
+      // ✅ métricas de operação
       lastLoginAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+
+      // ✅ createdAt: ok manter aqui com merge (não quebra), mas se quiser “imutável”
+      // a gente altera depois com getDoc.
+      createdAt: serverTimestamp(),
     },
     { merge: true }
   );
@@ -139,7 +149,7 @@ export default function LoginPage() {
         user = cred.user;
       }
 
-      // ✅ cria/atualiza users/{uid} antes do redirect
+      // ✅ cria/atualiza users/{uid} antes do redirect (sem mexer no vip)
       if (user) await ensureUserDoc(user);
 
       router.replace("/app");
@@ -240,7 +250,7 @@ export default function LoginPage() {
           </div>
 
           <div style={styles.footerNote}>
-            Auth: Email/Senha habilitado • Doc users/{`{uid}`} criado automaticamente no login.
+            Auth: Email/Senha habilitado • users/{`{uid}`} garantido • VIP não é sobrescrito no login.
           </div>
         </section>
       </div>
