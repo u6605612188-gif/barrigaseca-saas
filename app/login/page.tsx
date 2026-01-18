@@ -9,7 +9,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { auth, db } from "../../lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 
 function formatErr(e: unknown) {

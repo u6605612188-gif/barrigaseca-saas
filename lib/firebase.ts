@@ -1,6 +1,6 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, initializeFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
@@ -13,15 +13,26 @@ if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.proj
   console.warn("[Firebase] Variáveis NEXT_PUBLIC_FIREBASE_* ausentes/invalidas.");
 }
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
-// Firestore: força transporte compatível (resolve “client is offline” em redes/proxies/extensões)
-export const db =
-  typeof window !== "undefined"
-    ? initializeFirestore(app, {
-        experimentalAutoDetectLongPolling: true,
-        experimentalForceLongPolling: true,
-      })
-    : getFirestore(app);
+// Evita inicialização duplicada do Firestore no client (hot reload / múltiplos imports)
+let _db: Firestore | null = null;
+
+export const db: Firestore = (() => {
+  if (_db) return _db;
+
+  // ✅ IMPORTANTe: use APENAS UM dos flags. Aqui vamos manter ForceLongPolling.
+  // Se existir algum lugar no projeto usando experimentalAutoDetectLongPolling,
+  // ele precisa ser removido (senão dá conflito).
+  if (typeof window !== "undefined") {
+    _db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    });
+  } else {
+    _db = getFirestore(app);
+  }
+
+  return _db;
+})();
