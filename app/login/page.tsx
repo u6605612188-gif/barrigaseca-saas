@@ -26,6 +26,7 @@ function friendlyAuthError(raw: string) {
   if (raw.includes("auth/invalid-email")) return "E-mail inválido.";
   if (raw.includes("auth/user-not-found")) return "Usuário não encontrado.";
   if (raw.includes("auth/wrong-password")) return "Senha incorreta.";
+  if (raw.includes("auth/invalid-credential")) return "E-mail ou senha incorretos.";
   if (raw.includes("auth/too-many-requests"))
     return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
   if (raw.includes("auth/email-already-in-use"))
@@ -35,13 +36,7 @@ function friendlyAuthError(raw: string) {
   return raw;
 }
 
-/**
- * ✅ Governança: garante users/{uid} sem derrubar VIP.
- * - NÃO escreve `vip` aqui.
- * - `createdAt` só é setado na primeira vez (merge não cria "create only"),
- *   então a estratégia é: escrever sempre `createdAt` como serverTimestamp,
- *   mas se isso te incomodar, dá pra fazer com getDoc; por ora mantemos simples.
- */
+// ✅ Governança: garante que users/{uid} existe (sem sobrescrever vip existente)
 async function ensureUserDoc(u: User) {
   const ref = doc(db, "users", u.uid);
 
@@ -50,14 +45,10 @@ async function ensureUserDoc(u: User) {
     {
       uid: u.uid,
       email: (u.email ?? "").toLowerCase(),
-
-      // ✅ métricas de operação
+      vip: false, // default; merge=true não derruba vip true se já existir
       lastLoginAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-
-      // ✅ createdAt: ok manter aqui com merge (não quebra), mas se quiser “imutável”
-      // a gente altera depois com getDoc.
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     },
     { merge: true }
   );
@@ -149,7 +140,6 @@ export default function LoginPage() {
         user = cred.user;
       }
 
-      // ✅ cria/atualiza users/{uid} antes do redirect (sem mexer no vip)
       if (user) await ensureUserDoc(user);
 
       router.replace("/app");
@@ -174,9 +164,7 @@ export default function LoginPage() {
     }
   }
 
-  if (loading) {
-    return <main style={{ padding: 32 }}>Carregando…</main>;
-  }
+  if (loading) return <main style={{ padding: 32 }}>Carregando…</main>;
 
   return (
     <main style={styles.page}>
@@ -224,18 +212,25 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {/* CTA de cadastro/login com contraste real (não “some” no branco) */}
+          <div style={styles.ctaRow}>
+            <span style={styles.ctaText}>
+              {mode === "login" ? "Não tem conta?" : "Já tem conta?"}
+            </span>
+
             <button
               type="button"
               onClick={() => {
                 setError(null);
                 setMode((m) => (m === "login" ? "register" : "login"));
               }}
-              style={styles.btnGhost}
+              style={styles.ctaLinkBtn}
             >
-              {mode === "login" ? "Criar conta" : "Já tenho conta"}
+              {mode === "login" ? "Criar conta" : "Fazer login"}
             </button>
+          </div>
 
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <a href="/free" style={styles.btnGhostLink}>
               Voltar pro calendário
             </a>
@@ -250,7 +245,7 @@ export default function LoginPage() {
           </div>
 
           <div style={styles.footerNote}>
-            Auth: Email/Senha habilitado • users/{`{uid}`} garantido • VIP não é sobrescrito no login.
+            Auth: Email/Senha habilitado • Doc users/{`{uid}`} criado no login • VIP não é sobrescrito.
           </div>
         </section>
       </div>
@@ -330,14 +325,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fff",
     cursor: "pointer",
   },
-  btnGhost: {
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#fff",
-    fontWeight: 950,
-    cursor: "pointer",
-  },
   btnNeutral: {
     padding: "12px 14px",
     borderRadius: 14,
@@ -349,7 +336,7 @@ const styles: Record<string, React.CSSProperties> = {
   btnGhostLink: {
     padding: "12px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
+    border: "1px solid rgba(17,17,17,0.18)",
     background: "#fff",
     fontWeight: 950,
     textDecoration: "none",
@@ -383,5 +370,27 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#666",
     fontWeight: 700,
     lineHeight: 1.5,
+  },
+
+  // ✅ novo: CTA visível e óbvio
+  ctaRow: {
+    marginTop: 12,
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  ctaText: {
+    fontWeight: 800,
+    color: "#333",
+  },
+  ctaLinkBtn: {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(17,17,17,0.22)",
+    background: "#f3f4f6",
+    fontWeight: 950,
+    color: "#111",
+    cursor: "pointer",
   },
 };
