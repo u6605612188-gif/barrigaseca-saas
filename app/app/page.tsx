@@ -141,6 +141,11 @@ export default function AppPage() {
             </a>
           )}
 
+          {/* ✅ BOTÃO NOVO */}
+          <a href="/vip/progresso" style={styles.btnGhost}>
+            Progresso
+          </a>
+
           <a href="/vip/checklist" style={styles.btnGhost}>
             Checklist
           </a>

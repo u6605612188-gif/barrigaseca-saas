@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 
 type CheckoutResponse = {
   url?: string;
@@ -95,9 +95,23 @@ export default function VipClient() {
           <div style={styles.badge}>Barriga Seca • VIP</div>
           <h1 style={styles.h1}>Seja membro VIP</h1>
           <p style={styles.sub}>
-            Libere o <strong>Calendário completo de 30 dias</strong>, checklist de hábitos e metas.
+            Libere o <strong>Calendário completo de 30 dias</strong>, checklist de hábitos, metas e
+            o painel de <strong>Progresso</strong>.
             Produto simples, direto e com execução diária.
           </p>
+
+          {/* ✅ ATALHOS VIP */}
+          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <a href="/vip/progresso" style={styles.btnGhost}>
+              Progresso
+            </a>
+            <a href="/vip/checklist" style={styles.btnGhost}>
+              Checklist
+            </a>
+            <a href="/vip/metas" style={styles.btnGhost}>
+              Metas
+            </a>
+          </div>
         </header>
 
         {banner && (
@@ -122,6 +136,9 @@ export default function VipClient() {
               <a href="/app" style={styles.btnDark}>
                 Ir para o App
               </a>
+              <a href="/vip/progresso" style={styles.btnGhost}>
+                Ver Progresso
+              </a>
               <a href="/free" style={styles.btnGhost}>
                 Ver área grátis
               </a>
@@ -138,6 +155,7 @@ export default function VipClient() {
               "Treinos guiados do dia",
               "Checklist de hábitos (VIP)",
               "Metas (VIP)",
+              "Progresso (Dashboard VIP)",
             ]}
           />
           <Card
@@ -179,6 +197,9 @@ export default function VipClient() {
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <a href="/app" style={styles.btnLight}>
               Abrir o App
+            </a>
+            <a href="/vip/progresso" style={styles.btnGhostOnDark}>
+              Abrir Progresso
             </a>
             <a href="/free" style={styles.btnGhostOnDark}>
               Voltar para o grátis
