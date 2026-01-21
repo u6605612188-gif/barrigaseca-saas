@@ -471,6 +471,10 @@ function Field({
           border: "1px solid #e6e6e6",
           fontWeight: 900,
           outline: "none",
+          // ✅ FIX VISIBILIDADE (números pretos)
+          color: "#111",
+          background: "#fff",
+          caretColor: "#111",
         }}
       />
     </label>
@@ -601,5 +605,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#fff",
     fontWeight: 950,
     cursor: "pointer",
+    color: "#111",
   },
 };
