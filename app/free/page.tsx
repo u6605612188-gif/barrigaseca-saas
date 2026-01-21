@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { collection, getDocs, orderBy, query, doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 type DayDoc = {
   day: number;
@@ -25,6 +26,11 @@ const PLAN_ID = "bs30";
 export default function FreePage() {
   const [selectedDay, setSelectedDay] = useState<number>(1);
 
+  // Auth + VIP
+  const [authReady, setAuthReady] = useState(false);
+  const [uid, setUid] = useState<string | null>(null);
+  const [vipActive, setVipActive] = useState(false);
+
   // Firestore source of truth
   const [days, setDays] = useState<DayDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +46,72 @@ export default function FreePage() {
     return fromFallback;
   }, [days, fallback, selectedDay]);
 
-  const isVipLocked = selectedDay > FREE_DAYS;
+  // ✅ CORREÇÃO: trava VIP só se o usuário NÃO for VIP
+  const isVipLocked = !vipActive && selectedDay > FREE_DAYS;
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setUid(u?.uid ?? null);
+      setAuthReady(true);
+
+      // Se não tem user, não é VIP
+      if (!u?.uid) {
+        setVipActive(false);
+        return;
+      }
+
+      // ✅ CORREÇÃO: buscar flag VIP do usuário no Firestore
+      try {
+        const userRef = doc(db, "users", u.uid);
+        const snap = await getDoc(userRef);
+
+        if (!snap.exists()) {
+          setVipActive(false);
+          return;
+        }
+
+        const data = snap.data() as any;
+
+        // Aceita vários formatos de schema sem quebrar assinantes ativos:
+        // boolean flags
+        const flag =
+          data?.vipActive === true ||
+          data?.isVip === true ||
+          data?.vip === true ||
+          data?.vip_enabled === true;
+
+        // status string comum de assinatura
+        const statusOk =
+          typeof data?.subscriptionStatus === "string" &&
+          ["active", "trialing", "paid"].includes(String(data.subscriptionStatus).toLowerCase());
+
+        // data de expiração (timestamp/ms/seconds ou ISO)
+        let untilOk = false;
+        const until = data?.vipUntil ?? data?.vip_until ?? data?.vipExpiresAt ?? data?.vip_expires_at;
+        if (until) {
+          const now = Date.now();
+
+          // Firestore Timestamp-like {seconds}
+          if (typeof until?.seconds === "number") {
+            untilOk = until.seconds * 1000 > now;
+          } else if (typeof until === "number") {
+            // milliseconds
+            untilOk = until > now;
+          } else if (typeof until === "string") {
+            const t = Date.parse(until);
+            if (!Number.isNaN(t)) untilOk = t > now;
+          }
+        }
+
+        setVipActive(Boolean(flag || statusOk || untilOk));
+      } catch {
+        // Em caso de erro, não libera (segurança)
+        setVipActive(false);
+      }
+    });
+
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     async function loadFromFirestore() {
@@ -221,7 +292,8 @@ export default function FreePage() {
           >
             {Array.from({ length: 30 }).map((_, i) => {
               const d = i + 1;
-              const locked = d > FREE_DAYS;
+              // ✅ CORREÇÃO: dias VIP só aparecem travados se NÃO for VIP
+              const locked = !vipActive && d > FREE_DAYS;
               const active = d === selectedDay;
 
               return (

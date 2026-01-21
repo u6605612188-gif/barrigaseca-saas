@@ -23,6 +23,7 @@ type HabitDef = {
 
 type UserProfile = {
   vip?: boolean;
+  vipUntil?: any; // Firestore Timestamp
 };
 
 type DailyHabitsDoc = {
@@ -92,6 +93,17 @@ function isOfflineErr(message: string) {
   );
 }
 
+function isVipFromProfile(data: UserProfile) {
+  if (data?.vip === true) return true;
+
+  const until = (data as any)?.vipUntil;
+  if (until && typeof until?.seconds === "number") {
+    return until.seconds * 1000 > Date.now();
+  }
+
+  return false;
+}
+
 export default function ChecklistPage() {
   const router = useRouter();
 
@@ -124,7 +136,6 @@ export default function ChecklistPage() {
       setAuthReady(true);
 
       if (!u) {
-        // Important: não deixe a tela presa em loading
         router.replace("/login");
       }
     });
@@ -132,15 +143,13 @@ export default function ChecklistPage() {
     return () => unsub();
   }, [router]);
 
-  // -------- VIP gate (users/{uid}.vip) --------
+  // -------- VIP gate (users/{uid}.vip OR vipUntil) --------
   useEffect(() => {
     let cancelled = false;
 
     async function loadVip() {
-      // auth ainda não resolveu -> não faz nada
       if (!authReady) return;
 
-      // sem uid (não logado) -> encerra loading VIP
       if (!uid) {
         setVipLoading(false);
         return;
@@ -157,7 +166,7 @@ export default function ChecklistPage() {
         if (cancelled) return;
 
         const data = (snap.exists() ? (snap.data() as UserProfile) : {}) ?? {};
-        setIsVip(data.vip === true);
+        setIsVip(isVipFromProfile(data));
       } catch (e) {
         if (cancelled) return;
         setScreenError(formatErr(e));
@@ -288,6 +297,35 @@ export default function ChecklistPage() {
 
   const progress = useMemo(() => calcProgress(items), [items]);
 
+  async function persistCurrent(nextItems: Record<HabitKey, boolean>) {
+    if (!authReady) return;
+    if (!uid) return;
+    if (!isVip) return;
+
+    const p = calcProgress(nextItems);
+    const ref = doc(db, "users", uid, "habits", day);
+
+    setSaving(true);
+    setScreenError(null);
+
+    try {
+      const existing = await getDoc(ref);
+
+      const payload: any = {
+        date: day,
+        items: nextItems,
+        allDone: p.allDone,
+        updatedAt: serverTimestamp(),
+      };
+      if (!existing.exists()) payload.createdAt = serverTimestamp();
+
+      await setDoc(ref, payload, { merge: true });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Mantém autosave no clique (como já está no seu produto)
   async function toggleHabit(k: HabitKey) {
     if (!authReady) return;
     if (!uid) return;
@@ -298,40 +336,34 @@ export default function ChecklistPage() {
     const next = { ...items, [k]: !items[k] };
     setItems(next);
 
-    const p = calcProgress(next);
-    const ref = doc(db, "users", uid, "habits", day);
-
     try {
-      setSaving(true);
-      setScreenError(null);
-
-      const existing = await getDoc(ref);
-
-      const payload: any = {
-        date: day,
-        items: next,
-        allDone: p.allDone,
-        updatedAt: serverTimestamp(),
-      };
-      if (!existing.exists()) payload.createdAt = serverTimestamp();
-
-      await setDoc(ref, payload, { merge: true });
+      await persistCurrent(next);
     } catch (e) {
       setItems(prev);
       setScreenError(formatErr(e));
-    } finally {
-      setSaving(false);
+    }
+  }
+
+  // ✅ BOTÃO SALVAR (explicitamente)
+  async function handleSave() {
+    if (!authReady) return;
+    if (!uid) return;
+    if (!isVip) return;
+    if (saving) return;
+
+    try {
+      await persistCurrent(items);
+    } catch (e) {
+      setScreenError(formatErr(e));
     }
   }
 
   // ----- Rendering -----
 
-  // Enquanto auth não resolve, mostra loading (curto e objetivo)
   if (!authReady || vipLoading) {
     return <main style={{ padding: 28 }}>Carregando…</main>;
   }
 
-  // Se authReady e uid null, já foi mandado pro /login
   if (!uid) {
     return <main style={{ padding: 28 }}>Redirecionando…</main>;
   }
@@ -538,10 +570,22 @@ export default function ChecklistPage() {
             })}
           </div>
 
+          {/* ✅ BOTÃO SALVAR (NOVO) */}
           <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                ...btnDark,
+                cursor: saving ? "not-allowed" : "pointer",
+              }}
+            >
+              {saving ? "Salvando…" : "Salvar"}
+            </button>
+
             <a href="/app" style={btnGhost}>Voltar</a>
             <a href="/vip/metas" style={btnGhost}>Metas</a>
-            <a href="/vip" style={btnDark}>Gerenciar assinatura</a>
+            <a href="/vip" style={btnGhost}>Gerenciar assinatura</a>
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, color: "#777", fontWeight: 700 }}>

@@ -28,6 +28,11 @@ type GoalsDoc = {
   createdAt?: Timestamp;
 };
 
+type UserProfile = {
+  vip?: boolean;
+  vipUntil?: any; // Firestore Timestamp
+};
+
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
@@ -43,6 +48,17 @@ function startOfWeekMonday(date = new Date()) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function isVipFromProfile(data: UserProfile) {
+  if (data?.vip === true) return true;
+
+  const until = (data as any)?.vipUntil;
+  if (until && typeof until?.seconds === "number") {
+    return until.seconds * 1000 > Date.now();
+  }
+
+  return false;
 }
 
 export default function MetasPage() {
@@ -107,10 +123,11 @@ export default function MetasPage() {
       setErr(null);
 
       try {
-        // VIP flag: users/{uid}.vip
+        // ✅ CORREÇÃO: VIP flag: users/{uid}.vip OR vipUntil
         const userRef = doc(db, "users", authUser.uid);
         const snap = await getDoc(userRef);
-        const vip = Boolean(snap.exists() ? (snap.data() as any)?.vip : false);
+        const profile = (snap.exists() ? (snap.data() as UserProfile) : {}) ?? {};
+        const vip = isVipFromProfile(profile);
         setIsVip(vip);
 
         // carrega metas (se tiver)
