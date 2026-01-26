@@ -30,14 +30,11 @@ function getStripe() {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
   if (!secretKey) throw new Error("ENV ausente: STRIPE_SECRET_KEY");
 
-  // Mantive como está no seu projeto para não quebrar ambiente.
   return new Stripe(secretKey, { apiVersion: "2025-12-15.clover" });
 }
 
 // ---------- Type helpers ----------
 function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
-  // Em algumas versões do SDK/types, `subscription` não existe no tipo `Invoice`,
-  // mas o campo pode vir no payload real do Stripe. Então fazemos um fallback seguro.
   const sub = (invoice as unknown as { subscription?: unknown }).subscription;
 
   if (!sub) return null;
@@ -76,72 +73,47 @@ async function findUserDocByStripeCustomerId(stripeCustomerId: string) {
   return snap.docs[0];
 }
 
-async function upsertVip(params: {
+async function resolveUserRef(params: {
   uid?: string | null;
   email?: string | null;
   stripeCustomerId?: string | null;
-  stripeSubscriptionId?: string | null;
-  vip: boolean;
-  vipUntil?: Date | null;
 }) {
-  const { uid, email, stripeCustomerId, stripeSubscriptionId, vip, vipUntil } =
-    params;
-
   const db = getAdminDb();
 
-  // ✅ PRIORIDADE MÁXIMA: se veio uid, grava direto em users/{uid} (cria o doc se não existir)
-  if (uid) {
-    const ref = db.collection("users").doc(uid);
+  // prioridade: uid
+  if (params.uid) return db.collection("users").doc(params.uid);
 
-    await ref.set(
-      {
-        uid,
-        email: email ?? null,
-        vip,
-        stripeCustomerId: stripeCustomerId ?? null,
-        stripeSubscriptionId: stripeSubscriptionId ?? null,
-        vipUntil: vipUntil
-          ? admin.firestore.Timestamp.fromDate(vipUntil)
-          : null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    return;
+  // fallback: customerId -> email
+  if (params.stripeCustomerId) {
+    const snap = await findUserDocByStripeCustomerId(params.stripeCustomerId);
+    if (snap) return snap.ref;
   }
 
-  // Fallback: sem uid => tenta localizar por customerId/email
-  let docRef:
-    | FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
-    | null = null;
-
-  if (!docRef && stripeCustomerId) {
-    const snap = await findUserDocByStripeCustomerId(stripeCustomerId);
-    if (snap) docRef = snap.ref;
+  if (params.email) {
+    const snap = await findUserDocByEmail(params.email);
+    if (snap) return snap.ref;
   }
 
-  if (!docRef && email) {
-    const snap = await findUserDocByEmail(email);
-    if (snap) docRef = snap.ref;
-  }
-
-  if (!docRef) return; // usuário não encontrado, não quebra o webhook
-
-  await docRef.set(
-    {
-      email: email ?? null,
-      vip,
-      stripeCustomerId: stripeCustomerId ?? null,
-      stripeSubscriptionId: stripeSubscriptionId ?? null,
-      vipUntil: vipUntil ? admin.firestore.Timestamp.fromDate(vipUntil) : null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  return null;
 }
 
+function toTs(d: Date | null | undefined) {
+  return d ? admin.firestore.Timestamp.fromDate(d) : null;
+}
+
+const USERS = "users";
+const EVENTS = "stripeEvents";
+
+/**
+ * Modelo novo (ciclos):
+ * - unlockedCycles: soma +1 a cada invoice.payment_succeeded (renovação / cobrança confirmada)
+ * - checkout.session.completed: só garante vínculo e marca vip true (sem somar ciclo, pra não duplicar)
+ * - subscription.deleted: desativa vip/vipUntil, mas NÃO reduz unlockedCycles (ciclos já desbloqueados continuam)
+ *
+ * Hardening:
+ * - createdAt nunca mais é sobrescrito (só setado se doc não existir)
+ * - idempotência por event.id (não soma 2x)
+ */
 export async function POST(req: Request) {
   try {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -174,6 +146,33 @@ export async function POST(req: Request) {
       );
     }
 
+    const db = getAdminDb();
+
+    // ---- Idempotência por event.id (evita somar ciclos 2x) ----
+    const eventRef = db.collection(EVENTS).doc(event.id);
+
+    try {
+      await db.runTransaction(async (tx) => {
+        const evSnap = await tx.get(eventRef);
+        if (evSnap.exists) {
+          // já processado
+          throw new Error("__EVENT_ALREADY_PROCESSED__");
+        }
+
+        // marca como visto (antes de escrever efeitos) para travar duplicidade
+        tx.create(eventRef, {
+          type: event.type,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (e: any) {
+      if (String(e?.message) === "__EVENT_ALREADY_PROCESSED__") {
+        return NextResponse.json({ received: true, dedup: true }, { status: 200 });
+      }
+      throw e;
+    }
+
+    // ---- Processamento por tipo ----
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -195,14 +194,44 @@ export async function POST(req: Request) {
             ? session.subscription
             : session.subscription?.id ?? null;
 
-        // Marca VIP como true. vipUntil normalmente vem com invoice.payment_succeeded.
-        await upsertVip({
+        const userRef = await resolveUserRef({
           uid,
           email,
           stripeCustomerId: customerId,
-          stripeSubscriptionId: subscriptionId,
-          vip: true,
-          vipUntil: null,
+        });
+
+        // usuário não encontrado (não quebra webhook)
+        if (!userRef) break;
+
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(userRef);
+
+          // createdAt: só se o doc não existir
+          if (!snap.exists) {
+            tx.set(
+              userRef,
+              {
+                uid: uid ?? userRef.id,
+                email: email ?? null,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+
+          tx.set(
+            userRef,
+            {
+              // vínculo e flags legado
+              uid: uid ?? userRef.id,
+              email: email ?? null,
+              vip: true,
+              stripeCustomerId: customerId ?? null,
+              stripeSubscriptionId: subscriptionId ?? null,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
         });
 
         break;
@@ -222,14 +251,46 @@ export async function POST(req: Request) {
 
         const line = invoice.lines?.data?.[0];
         const periodEndUnix = line?.period?.end;
+        const vipUntil = periodEndUnix ? new Date(periodEndUnix * 1000) : null;
 
-        await upsertVip({
+        const userRef = await resolveUserRef({
           uid: null,
           email,
           stripeCustomerId: customerId,
-          stripeSubscriptionId: subscriptionId,
-          vip: true,
-          vipUntil: periodEndUnix ? new Date(periodEndUnix * 1000) : null,
+        });
+
+        if (!userRef) break;
+
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(userRef);
+
+          // createdAt: só se faltando
+          if (!snap.exists) {
+            tx.set(
+              userRef,
+              {
+                uid: userRef.id,
+                email: email ?? null,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+
+          // ✅ Core: a cada cobrança confirmada soma +1 ciclo liberado
+          tx.set(
+            userRef,
+            {
+              email: email ?? null,
+              vip: true,
+              vipUntil: toTs(vipUntil),
+              stripeCustomerId: customerId ?? null,
+              stripeSubscriptionId: subscriptionId ?? null,
+              unlockedCycles: admin.firestore.FieldValue.increment(1),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
         });
 
         break;
@@ -245,14 +306,30 @@ export async function POST(req: Request) {
 
         const subscriptionId = sub.id ?? null;
 
-        // Cancelou => remove VIP
-        await upsertVip({
+        const userRef = await resolveUserRef({
           uid: null,
           email: null,
           stripeCustomerId: customerId,
-          stripeSubscriptionId: subscriptionId,
-          vip: false,
-          vipUntil: null,
+        });
+
+        if (!userRef) break;
+
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(userRef);
+          if (!snap.exists) return;
+
+          // ✅ não reduz unlockedCycles (ciclos já desbloqueados permanecem)
+          tx.set(
+            userRef,
+            {
+              vip: false,
+              vipUntil: null,
+              stripeCustomerId: customerId ?? null,
+              stripeSubscriptionId: subscriptionId ?? null,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
         });
 
         break;

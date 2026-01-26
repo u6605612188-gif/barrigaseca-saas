@@ -3,12 +3,68 @@
 import React, { useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc, Timestamp } from "firebase/firestore";
 
 type CheckoutResponse = {
   url?: string;
   error?: string;
 };
+
+type UserProfile = {
+  unlockedCycles?: number;
+
+  // compat legado
+  vip?: boolean;
+  vipActive?: boolean;
+  isVip?: boolean;
+  vip_enabled?: boolean;
+  subscriptionStatus?: string;
+
+  vipUntil?: any;
+  vip_until?: any;
+  vipExpiresAt?: any;
+  vip_expires_at?: any;
+};
+
+function asMillis(v: any): number | null {
+  if (!v) return null;
+  if (v instanceof Timestamp) return v.toMillis();
+  if (typeof v?.seconds === "number") return v.seconds * 1000;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+}
+
+function resolveUnlockedCycles(data: UserProfile): number {
+  const direct = Number((data as any)?.unlockedCycles);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const flag =
+    (data as any)?.vipActive === true ||
+    (data as any)?.isVip === true ||
+    (data as any)?.vip === true ||
+    (data as any)?.vip_enabled === true;
+
+  const statusOk =
+    typeof (data as any)?.subscriptionStatus === "string" &&
+    ["active", "trialing", "paid"].includes(String((data as any).subscriptionStatus).toLowerCase());
+
+  const until =
+    (data as any)?.vipUntil ??
+    (data as any)?.vip_until ??
+    (data as any)?.vipExpiresAt ??
+    (data as any)?.vip_expires_at;
+
+  const untilMs = asMillis(until);
+  const untilOk = typeof untilMs === "number" ? untilMs > Date.now() : false;
+
+  // Legado: VIP ativo = pelo menos 1 ciclo liberado
+  return flag || statusOk || untilOk ? 1 : 0;
+}
 
 export default function VipClient() {
   const [loading, setLoading] = useState(false);
@@ -16,15 +72,39 @@ export default function VipClient() {
   const [uid, setUid] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
 
+  // Novo modelo
+  const [entLoading, setEntLoading] = useState(true);
+  const [unlockedCycles, setUnlockedCycles] = useState<number>(0);
+
   const searchParams = useSearchParams();
   const router = useRouter();
 
   React.useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUid(u?.uid ?? null);
       setEmail(u?.email ?? null);
       setAuthReady(true);
+
+      // sem user => sem entitlement
+      if (!u?.uid) {
+        setUnlockedCycles(0);
+        setEntLoading(false);
+        return;
+      }
+
+      try {
+        setEntLoading(true);
+        const userRef = doc(db, "users", u.uid);
+        const snap = await getDoc(userRef);
+        const data = (snap.exists() ? (snap.data() as UserProfile) : {}) ?? {};
+        setUnlockedCycles(resolveUnlockedCycles(data));
+      } catch {
+        setUnlockedCycles(0);
+      } finally {
+        setEntLoading(false);
+      }
     });
+
     return () => unsub();
   }, []);
 
@@ -35,7 +115,7 @@ export default function VipClient() {
     if (success) {
       return {
         title: "Pagamento confirmado ✅",
-        desc: "Se o VIP ainda não liberou, aguarde alguns segundos e atualize a página (webhook).",
+        desc: "Se o acesso ainda não refletiu, aguarde alguns segundos e atualize a página (webhook).",
         tone: "ok" as const,
       };
     }
@@ -48,6 +128,19 @@ export default function VipClient() {
     }
     return null;
   }, [success, canceled]);
+
+  const accessLine = useMemo(() => {
+    if (!authReady) return "Sincronizando…";
+    if (!uid) return "Você precisa estar logado para assinar.";
+
+    if (entLoading) return "Validando seu acesso…";
+
+    if (unlockedCycles >= 1) {
+      return `Acesso ativo • Ciclos liberados: ${unlockedCycles} (Ciclo 1 já liberado).`;
+    }
+
+    return "Sem ciclos liberados ainda • Assine para liberar o Ciclo 1 (30 dias).";
+  }, [authReady, uid, entLoading, unlockedCycles]);
 
   async function handleCheckout() {
     if (loading) return;
@@ -86,6 +179,14 @@ export default function VipClient() {
     }
   }
 
+  const primaryCtaLabel = useMemo(() => {
+    if (!authReady) return "Carregando…";
+    if (!uid) return "Entrar para assinar";
+    if (entLoading) return "Validando…";
+    if (unlockedCycles >= 1) return "Renovar e liberar próximo ciclo";
+    return "Assinar VIP e liberar Ciclo 1";
+  }, [authReady, uid, entLoading, unlockedCycles]);
+
   return (
     <main style={styles.page}>
       <div style={styles.bg} aria-hidden />
@@ -95,9 +196,8 @@ export default function VipClient() {
           <div style={styles.badge}>Barriga Seca • VIP</div>
           <h1 style={styles.h1}>Seja membro VIP</h1>
           <p style={styles.sub}>
-            Libere o <strong>Calendário completo de 30 dias</strong>, checklist de hábitos, metas e
-            o painel de <strong>Progresso</strong>.
-            Produto simples, direto e com execução diária.
+            Modelo novo: <strong>cada assinatura mensal libera +1 ciclo</strong> de 30 dias (conteúdo
+            cumulativo). Você mantém acesso aos ciclos já liberados e evolui mês a mês.
           </p>
 
           {/* ✅ ATALHOS VIP */}
@@ -112,6 +212,8 @@ export default function VipClient() {
               Metas
             </a>
           </div>
+
+          <div style={{ marginTop: 12, fontSize: 12, fontWeight: 900, color: "#111" }}>{accessLine}</div>
         </header>
 
         {banner && (
@@ -123,9 +225,7 @@ export default function VipClient() {
                   ? "1px solid rgba(34,197,94,0.25)"
                   : "1px solid rgba(245,158,11,0.25)",
               background:
-                banner.tone === "ok"
-                  ? "rgba(34,197,94,0.08)"
-                  : "rgba(245,158,11,0.10)",
+                banner.tone === "ok" ? "rgba(34,197,94,0.08)" : "rgba(245,158,11,0.10)",
             }}
           >
             <div style={{ fontWeight: 950, fontSize: 14 }}>{banner.title}</div>
@@ -150,18 +250,19 @@ export default function VipClient() {
           <Card
             title="O que você desbloqueia"
             items={[
-              "Dias 8–30 liberados",
-              "Receitas completas e variações",
+              "Ciclo 1 completo (30 dias)",
+              "Receitas do dia + variações",
               "Treinos guiados do dia",
               "Checklist de hábitos (VIP)",
               "Metas (VIP)",
               "Progresso (Dashboard VIP)",
+              "A cada renovação: +1 ciclo liberado",
             ]}
           />
           <Card
             title="Pra quem é"
             items={[
-              "Quer barriga mais seca e rotina simples",
+              "Quer barriga mais seca com rotina objetiva",
               "Não tem tempo pra treinos longos",
               "Precisa de direção diária",
               "Quer praticidade nas refeições",
@@ -171,8 +272,8 @@ export default function VipClient() {
             title="Como funciona"
             items={[
               "Assinatura mensal recorrente",
+              "Acesso cumulativo: ciclos liberados não expiram",
               "Cancele quando quiser",
-              "Acesso libera após pagamento",
               "Você precisa estar logado para assinar",
             ]}
           />
@@ -182,16 +283,16 @@ export default function VipClient() {
           <div>
             <div style={{ fontSize: 18, fontWeight: 950, color: "#fff" }}>Plano VIP</div>
             <div style={{ marginTop: 8, opacity: 0.9, fontWeight: 700 }}>
-              Assinatura recorrente • Cancele quando quiser
+              Assinatura recorrente • Cada mês libera +1 ciclo (30 dias)
             </div>
           </div>
 
           <button onClick={handleCheckout} disabled={loading} style={styles.payBtn}>
-            {loading ? "Abrindo pagamento…" : uid ? "Assinar VIP agora" : "Entrar para assinar"}
+            {loading ? "Abrindo pagamento…" : primaryCtaLabel}
           </button>
 
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-            Após pagar, você volta automaticamente e o acesso VIP é liberado via webhook.
+            Após pagar, você volta automaticamente e o acesso é liberado via webhook.
           </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -202,7 +303,7 @@ export default function VipClient() {
               Abrir Progresso
             </a>
             <a href="/free" style={styles.btnGhostOnDark}>
-              Voltar para o grátis
+              Ver área grátis
             </a>
           </div>
         </section>
@@ -274,7 +375,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#444",
     fontWeight: 700,
     lineHeight: 1.55,
-    maxWidth: 820,
+    maxWidth: 860,
   },
   banner: {
     marginTop: 12,
