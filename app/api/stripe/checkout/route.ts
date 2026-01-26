@@ -2,17 +2,14 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function getBaseUrl(req: Request) {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (envUrl) return envUrl.replace(/\/$/, "");
 
-  const host =
-    req.headers.get("x-forwarded-host") ??
-    req.headers.get("host");
-
-  const proto =
-    req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
 
   if (!host) return "http://localhost:3000";
   return `${proto}://${host}`;
@@ -25,7 +22,10 @@ type Body = {
 
 export async function POST(req: Request) {
   try {
-    const { uid, email } = (await req.json()) as Body;
+    const body = (await req.json()) as Body;
+    const uid = String(body?.uid ?? "").trim();
+    const emailRaw = body?.email ?? null;
+    const email = typeof emailRaw === "string" ? emailRaw.trim().toLowerCase() : null;
 
     if (!uid) {
       return NextResponse.json(
@@ -57,10 +57,19 @@ export async function POST(req: Request) {
       cancel_url: `${baseUrl}/vip?canceled=1`,
       allow_promotion_codes: true,
 
-      // 🔒 CHAVE DO SUCESSO DO PROJETO
+      // ✅ chave de vínculo (webhook vai priorizar uid)
+      client_reference_id: uid,
       metadata: {
         uid,
         email: email ?? "",
+      },
+
+      // ✅ garante que a assinatura também carregue o uid (útil em auditoria/integrações)
+      subscription_data: {
+        metadata: {
+          uid,
+          email: email ?? "",
+        },
       },
 
       customer_email: email ?? undefined,

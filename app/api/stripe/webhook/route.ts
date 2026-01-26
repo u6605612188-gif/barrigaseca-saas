@@ -101,7 +101,6 @@ function toTs(d: Date | null | undefined) {
   return d ? admin.firestore.Timestamp.fromDate(d) : null;
 }
 
-const USERS = "users";
 const EVENTS = "stripeEvents";
 
 /**
@@ -111,27 +110,21 @@ const EVENTS = "stripeEvents";
  * - subscription.deleted: desativa vip/vipUntil, mas NÃO reduz unlockedCycles (ciclos já desbloqueados continuam)
  *
  * Hardening:
- * - createdAt nunca mais é sobrescrito (só setado se doc não existir)
- * - idempotência por event.id (não soma 2x)
+ * - createdAt nunca é sobrescrito (só setado se doc não existir)
+ * - idempotência por event.id dentro da MESMA transação de update (não perde evento em falha)
  */
 export async function POST(req: Request) {
   try {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
     if (!webhookSecret) {
-      return NextResponse.json(
-        { error: "ENV ausente: STRIPE_WEBHOOK_SECRET" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "ENV ausente: STRIPE_WEBHOOK_SECRET" }, { status: 400 });
     }
 
     const stripe = getStripe();
 
     const signature = req.headers.get("stripe-signature");
     if (!signature) {
-      return NextResponse.json(
-        { error: "Header stripe-signature ausente" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Header stripe-signature ausente" }, { status: 400 });
     }
 
     const rawBody = await req.text();
@@ -147,32 +140,10 @@ export async function POST(req: Request) {
     }
 
     const db = getAdminDb();
-
-    // ---- Idempotência por event.id (evita somar ciclos 2x) ----
     const eventRef = db.collection(EVENTS).doc(event.id);
 
-    try {
-      await db.runTransaction(async (tx) => {
-        const evSnap = await tx.get(eventRef);
-        if (evSnap.exists) {
-          // já processado
-          throw new Error("__EVENT_ALREADY_PROCESSED__");
-        }
+    let dedup = false;
 
-        // marca como visto (antes de escrever efeitos) para travar duplicidade
-        tx.create(eventRef, {
-          type: event.type,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      });
-    } catch (e: any) {
-      if (String(e?.message) === "__EVENT_ALREADY_PROCESSED__") {
-        return NextResponse.json({ received: true, dedup: true }, { status: 200 });
-      }
-      throw e;
-    }
-
-    // ---- Processamento por tipo ----
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -180,34 +151,30 @@ export async function POST(req: Request) {
         const uid = (session.metadata?.uid ?? "").trim() || null;
 
         const email =
-          (session.customer_details?.email ??
-            session.customer_email ??
-            null)?.toLowerCase() ?? null;
+          (session.customer_details?.email ?? session.customer_email ?? null)?.toLowerCase() ?? null;
 
         const customerId =
-          typeof session.customer === "string"
-            ? session.customer
-            : session.customer?.id ?? null;
+          typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
 
         const subscriptionId =
           typeof session.subscription === "string"
             ? session.subscription
             : session.subscription?.id ?? null;
 
-        const userRef = await resolveUserRef({
-          uid,
-          email,
-          stripeCustomerId: customerId,
-        });
-
-        // usuário não encontrado (não quebra webhook)
+        const userRef = await resolveUserRef({ uid, email, stripeCustomerId: customerId });
         if (!userRef) break;
 
         await db.runTransaction(async (tx) => {
-          const snap = await tx.get(userRef);
+          const evSnap = await tx.get(eventRef);
+          if (evSnap.exists) {
+            dedup = true;
+            return;
+          }
 
-          // createdAt: só se o doc não existir
-          if (!snap.exists) {
+          const userSnap = await tx.get(userRef);
+
+          // createdAt: só se doc não existir
+          if (!userSnap.exists) {
             tx.set(
               userRef,
               {
@@ -219,10 +186,10 @@ export async function POST(req: Request) {
             );
           }
 
+          // vínculo e flags legado
           tx.set(
             userRef,
             {
-              // vínculo e flags legado
               uid: uid ?? userRef.id,
               email: email ?? null,
               vip: true,
@@ -232,6 +199,15 @@ export async function POST(req: Request) {
             },
             { merge: true }
           );
+
+          tx.create(eventRef, {
+            type: event.type,
+            uid: uid ?? null,
+            email: email ?? null,
+            stripeCustomerId: customerId ?? null,
+            stripeSubscriptionId: subscriptionId ?? null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
         });
 
         break;
@@ -243,9 +219,7 @@ export async function POST(req: Request) {
         const email = (invoice.customer_email ?? null)?.toLowerCase() ?? null;
 
         const customerId =
-          typeof invoice.customer === "string"
-            ? invoice.customer
-            : invoice.customer?.id ?? null;
+          typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id ?? null;
 
         const subscriptionId = getInvoiceSubscriptionId(invoice);
 
@@ -253,19 +227,20 @@ export async function POST(req: Request) {
         const periodEndUnix = line?.period?.end;
         const vipUntil = periodEndUnix ? new Date(periodEndUnix * 1000) : null;
 
-        const userRef = await resolveUserRef({
-          uid: null,
-          email,
-          stripeCustomerId: customerId,
-        });
-
+        const userRef = await resolveUserRef({ uid: null, email, stripeCustomerId: customerId });
         if (!userRef) break;
 
         await db.runTransaction(async (tx) => {
-          const snap = await tx.get(userRef);
+          const evSnap = await tx.get(eventRef);
+          if (evSnap.exists) {
+            dedup = true;
+            return;
+          }
 
-          // createdAt: só se faltando
-          if (!snap.exists) {
+          const userSnap = await tx.get(userRef);
+
+          // createdAt: só se doc não existir
+          if (!userSnap.exists) {
             tx.set(
               userRef,
               {
@@ -291,6 +266,15 @@ export async function POST(req: Request) {
             },
             { merge: true }
           );
+
+          tx.create(eventRef, {
+            type: event.type,
+            email: email ?? null,
+            stripeCustomerId: customerId ?? null,
+            stripeSubscriptionId: subscriptionId ?? null,
+            vipUntil: toTs(vipUntil),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
         });
 
         break;
@@ -300,23 +284,22 @@ export async function POST(req: Request) {
         const sub = event.data.object as Stripe.Subscription;
 
         const customerId =
-          typeof sub.customer === "string"
-            ? sub.customer
-            : sub.customer?.id ?? null;
+          typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
 
         const subscriptionId = sub.id ?? null;
 
-        const userRef = await resolveUserRef({
-          uid: null,
-          email: null,
-          stripeCustomerId: customerId,
-        });
-
+        const userRef = await resolveUserRef({ uid: null, email: null, stripeCustomerId: customerId });
         if (!userRef) break;
 
         await db.runTransaction(async (tx) => {
-          const snap = await tx.get(userRef);
-          if (!snap.exists) return;
+          const evSnap = await tx.get(eventRef);
+          if (evSnap.exists) {
+            dedup = true;
+            return;
+          }
+
+          const userSnap = await tx.get(userRef);
+          if (!userSnap.exists) return;
 
           // ✅ não reduz unlockedCycles (ciclos já desbloqueados permanecem)
           tx.set(
@@ -330,20 +313,30 @@ export async function POST(req: Request) {
             },
             { merge: true }
           );
+
+          tx.create(eventRef, {
+            type: event.type,
+            stripeCustomerId: customerId ?? null,
+            stripeSubscriptionId: subscriptionId ?? null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
         });
 
         break;
       }
 
-      default:
+      default: {
+        // Não faz nada (mantém compat), mas responde OK.
         break;
+      }
+    }
+
+    if (dedup) {
+      return NextResponse.json({ received: true, dedup: true }, { status: 200 });
     }
 
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message ?? "Erro interno no webhook" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err?.message ?? "Erro interno no webhook" }, { status: 500 });
   }
 }
