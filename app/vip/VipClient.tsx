@@ -179,6 +179,43 @@ export default function VipClient() {
     }
   }
 
+  async function handlePixCheckout() {
+    if (loading) return;
+
+    if (!authReady) return;
+    if (!uid) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await fetch("/api/stripe/checkout-pix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid,
+          email,
+        }),
+      });
+
+      let data: CheckoutResponse = {};
+      try {
+        data = (await res.json()) as CheckoutResponse;
+      } catch {}
+
+      if (!res.ok) throw new Error(data?.error || "Falha ao iniciar checkout Pix.");
+      if (!data?.url) throw new Error("Checkout Pix sem URL de redirecionamento.");
+
+      window.location.href = data.url;
+    } catch (e: any) {
+      alert(e?.message ?? "Erro inesperado.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const primaryCtaLabel = useMemo(() => {
     if (!authReady) return "Carregando…";
     if (!uid) return "Entrar para assinar";
@@ -200,7 +237,6 @@ export default function VipClient() {
             cumulativo). Você mantém acesso aos ciclos já liberados e evolui mês a mês.
           </p>
 
-          {/* ✅ ATALHOS VIP */}
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <a href="/vip/progresso" style={styles.btnGhost}>
               Progresso
@@ -272,8 +308,8 @@ export default function VipClient() {
             title="Como funciona"
             items={[
               "Assinatura mensal recorrente",
+              "Pagamento com Pix por 30 dias",
               "Acesso cumulativo: ciclos liberados não expiram",
-              "Cancele quando quiser",
               "Você precisa estar logado para assinar",
             ]}
           />
@@ -283,12 +319,16 @@ export default function VipClient() {
           <div>
             <div style={{ fontSize: 18, fontWeight: 950, color: "#fff" }}>Plano VIP</div>
             <div style={{ marginTop: 8, opacity: 0.9, fontWeight: 700 }}>
-              Assinatura recorrente • Cada mês libera +1 ciclo (30 dias)
+              Escolha entre assinatura recorrente no cartão ou pagamento avulso via Pix por 30 dias
             </div>
           </div>
 
           <button onClick={handleCheckout} disabled={loading} style={styles.payBtn}>
             {loading ? "Abrindo pagamento…" : primaryCtaLabel}
+          </button>
+
+          <button onClick={handlePixCheckout} disabled={loading} style={styles.payBtnPix}>
+            {loading ? "Abrindo pagamento…" : "Pagar com Pix (30 dias)"}
           </button>
 
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
@@ -410,6 +450,18 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #fff",
     background: "#fff",
     color: "#111",
+    fontWeight: 950,
+    cursor: "pointer",
+    width: "100%",
+    maxWidth: 460,
+  },
+  payBtnPix: {
+    marginTop: 10,
+    padding: 14,
+    borderRadius: 14,
+    border: "1px solid #16a34a",
+    background: "#16a34a",
+    color: "#fff",
     fontWeight: 950,
     cursor: "pointer",
     width: "100%",
