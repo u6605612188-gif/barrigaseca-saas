@@ -80,6 +80,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,9 +133,12 @@ export default function LoginPage() {
 
     const em = email.trim();
     const pw = password;
+    const cpw = confirmPassword;
 
     if (!em) return setError("Informe seu e-mail.");
     if (!pw || pw.length < 6) return setError("Informe uma senha com pelo menos 6 caracteres.");
+    if (mode === "register" && !cpw) return setError("Repita sua senha.");
+    if (mode === "register" && pw !== cpw) return setError("As senhas não conferem.");
 
     try {
       setSubmitting(true);
@@ -224,6 +228,20 @@ export default function LoginPage() {
               />
             </label>
 
+            {mode === "register" && (
+              <label style={styles.label}>
+                Repetir senha
+                <input
+                  value={confirmPassword}
+                  onChange={(ev) => setConfirmPassword(ev.target.value)}
+                  type="password"
+                  placeholder="••••••"
+                  style={styles.input}
+                  autoComplete="new-password"
+                />
+              </label>
+            )}
+
             <button type="submit" disabled={submitting} style={styles.btnPrimary}>
               {submitting ? "Processando…" : mode === "login" ? "Entrar" : "Criar conta"}
             </button>
@@ -234,6 +252,8 @@ export default function LoginPage() {
               type="button"
               onClick={() => {
                 setError(null);
+                setPassword("");
+                setConfirmPassword("");
                 setMode((m) => (m === "login" ? "register" : "login"));
               }}
               style={styles.btnGhost}
