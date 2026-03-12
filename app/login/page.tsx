@@ -238,7 +238,7 @@ export default function LoginPage() {
               }}
               style={styles.btnGhost}
             >
-              {mode === "login" ? "Criar conta" : "Já tenho conta"}
+              {mode === "login" ? "Não tenho cadastro" : "Já tenho conta"}
             </button>
 
             <a href="/free" style={styles.btnGhostLink}>
@@ -338,10 +338,12 @@ const styles: Record<string, React.CSSProperties> = {
   btnGhost: {
     padding: "12px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
+    border: "2px solid #111",
     background: "#fff",
+    color: "#111",
     fontWeight: 950,
     cursor: "pointer",
+    boxShadow: "0 0 0 1px rgba(17,17,17,0.04)",
   },
   btnNeutral: {
     padding: "12px 14px",
@@ -349,6 +351,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid rgba(17,17,17,0.12)",
     background: "#e9e9e9",
     fontWeight: 950,
+    color: "#111",
     cursor: "pointer",
   },
   btnGhostLink: {
