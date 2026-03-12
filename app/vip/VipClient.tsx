@@ -188,32 +188,7 @@ export default function VipClient() {
       return;
     }
 
-    try {
-      setLoading(true);
-
-      const res = await fetch("/api/stripe/checkout-pix", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uid,
-          email,
-        }),
-      });
-
-      let data: CheckoutResponse = {};
-      try {
-        data = (await res.json()) as CheckoutResponse;
-      } catch {}
-
-      if (!res.ok) throw new Error(data?.error || "Falha ao iniciar checkout Pix.");
-      if (!data?.url) throw new Error("Checkout Pix sem URL de redirecionamento.");
-
-      window.location.href = data.url;
-    } catch (e: any) {
-      alert(e?.message ?? "Erro inesperado.");
-    } finally {
-      setLoading(false);
-    }
+    window.location.href = "https://www.asaas.com/c/kqiulp53k9njyilq";
   }
 
   const primaryCtaLabel = useMemo(() => {
@@ -332,7 +307,7 @@ export default function VipClient() {
           </button>
 
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-            Após pagar, você volta automaticamente e o acesso é liberado via webhook.
+            No Pix, o pagamento será aberto no link seguro do Asaas.
           </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
