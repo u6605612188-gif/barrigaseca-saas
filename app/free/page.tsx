@@ -13,6 +13,13 @@ import {
   getDoc,
   Timestamp,
 } from "firebase/firestore";
+import {
+  defaultLanguage,
+  isLanguage,
+  languages,
+  translations,
+  type Language,
+} from "@/lib/i18n";
 
 type DayDoc = {
   cycle?: number;
@@ -31,10 +38,8 @@ type DayDoc = {
 };
 
 type UserProfile = {
-  createdAt?: any; // Timestamp | number | string
+  createdAt?: any;
   unlockedCycles?: number;
-
-  // compat legado
   vip?: boolean;
   vipActive?: boolean;
   isVip?: boolean;
@@ -47,30 +52,19 @@ type UserProfile = {
 };
 
 const FREE_DAYS = 7;
-
-// Novo motor: cycleDays (ciclos)
 const CYCLE_COLLECTION = "cycleDays";
 const FREE_CYCLE = 1;
 const DAYS_PER_CYCLE = 30;
 
 function asMillis(v: any): number | null {
   if (!v) return null;
-
-  // Firestore Timestamp
   if (v instanceof Timestamp) return v.toMillis();
-
-  // Timestamp-like { seconds }
   if (typeof v?.seconds === "number") return v.seconds * 1000;
-
-  // number (ms)
   if (typeof v === "number") return v;
-
-  // string date
   if (typeof v === "string") {
     const t = Date.parse(v);
     return Number.isNaN(t) ? null : t;
   }
-
   return null;
 }
 
@@ -79,8 +73,7 @@ function diffDaysUtc(fromMs: number, toMs: number): number {
   const b = new Date(toMs);
   const aUtc = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
   const bUtc = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
-  const ms = bUtc - aUtc;
-  return Math.floor(ms / 86400000);
+  return Math.floor((bUtc - aUtc) / 86400000);
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -91,19 +84,16 @@ function resolveUnlockedCycles(data: UserProfile): number {
   const direct = Number(data?.unlockedCycles);
   if (Number.isFinite(direct) && direct > 0) return direct;
 
-  // compat: flags boolean
   const flag =
     data?.vipActive === true ||
     data?.isVip === true ||
     data?.vip === true ||
     data?.vip_enabled === true;
 
-  // compat: status
   const statusOk =
     typeof data?.subscriptionStatus === "string" &&
     ["active", "trialing", "paid"].includes(String(data.subscriptionStatus).toLowerCase());
 
-  // compat: until
   const until =
     data?.vipUntil ?? data?.vip_until ?? data?.vipExpiresAt ?? data?.vip_expires_at;
   const untilMs = asMillis(until);
@@ -113,13 +103,12 @@ function resolveUnlockedCycles(data: UserProfile): number {
 }
 
 function buildCycleFallback(): DayDoc[] {
-  // fallback premium-friendly (pra não quebrar UX se Firestore cair)
   const out: DayDoc[] = [];
   const workouts = [
-    ["Agachamento 3×12", "Polichinelo 3×30s", "Prancha 3×30s", "Alongamento 2 min"],
-    ["Caminhada 15 min", "Abdominal 3×15", "Prancha lateral 3×20s", "Alongamento 2 min"],
-    ["Afundo 3×10 (cada perna)", "Elevação pélvica 3×12", "Prancha 3×40s", "Alongamento 2 min"],
-    ["HIIT leve 10 min", "Agachamento 4×10", "Abdominal curto 3×12", "Alongamento 2 min"],
+    ["Agachamento 3x12", "Polichinelo 3x30s", "Prancha 3x30s", "Alongamento 2 min"],
+    ["Caminhada 15 min", "Abdominal 3x15", "Prancha lateral 3x20s", "Alongamento 2 min"],
+    ["Afundo 3x10 (cada perna)", "Elevacao pelvica 3x12", "Prancha 3x40s", "Alongamento 2 min"],
+    ["HIIT leve 10 min", "Agachamento 4x10", "Abdominal curto 3x12", "Alongamento 2 min"],
   ];
 
   const cafe = [
@@ -130,20 +119,20 @@ function buildCycleFallback(): DayDoc[] {
   ];
   const almoco = [
     "Frango ao molho + legumes (20min)",
-    "Tilápia assada + purê (25min)",
-    "Carne moída com abobrinha + arroz (25min)",
-    "Salada completa + proteína (15min)",
+    "Tilapia assada + pure (25min)",
+    "Carne moida com abobrinha + arroz (25min)",
+    "Salada completa + proteina (15min)",
   ];
   const lanche = [
-    "Iogurte + fruta + castanhas (porção)",
-    "Sanduíche integral pequeno (queijo + tomate)",
+    "Iogurte + fruta + castanhas (porcao)",
+    "Sanduiche integral pequeno (queijo + tomate)",
     "Ovo cozido + fruta",
     "Mix de castanhas (30g)",
   ];
   const besteirinhas = [
-    "Gelatina zero + chá",
-    "Chocolate 70% (1–2 quadradinhos)",
-    "Pipoca sem óleo (porção pequena)",
+    "Gelatina zero + cha",
+    "Chocolate 70% (1-2 quadradinhos)",
+    "Pipoca sem oleo (porcao pequena)",
     "Banana com canela (airfryer 8min)",
   ];
   const janta = [
@@ -158,7 +147,7 @@ function buildCycleFallback(): DayDoc[] {
       cycle: FREE_CYCLE,
       day,
       isVip: day > FREE_DAYS,
-      title: `Dia ${day} — Ciclo ${FREE_CYCLE}`,
+      title: `Dia ${day} - Ciclo ${FREE_CYCLE}`,
       workout: workouts[(day - 1) % workouts.length],
       meals: {
         cafe: [cafe[(day - 1) % cafe.length]],
@@ -167,7 +156,7 @@ function buildCycleFallback(): DayDoc[] {
         besteirinhas: [besteirinhas[(day - 1) % besteirinhas.length]],
         janta: [janta[(day - 1) % janta.length]],
       },
-      tips: ["Meta do dia: água + consistência.", "Caminhada leve pós-refeição se possível."],
+      tips: ["Meta do dia: agua + consistencia.", "Caminhada leve pos-refeicao se possivel."],
     });
   }
 
@@ -175,40 +164,41 @@ function buildCycleFallback(): DayDoc[] {
 }
 
 export default function FreePage() {
-  const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [language, setLanguage] = useState<Language>(defaultLanguage);
+  const t = translations[language].free;
 
-  // Auth + Entitlement
+  const [selectedDay, setSelectedDay] = useState<number>(1);
   const [authReady, setAuthReady] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
-
-  // acesso por ciclos (novo modelo)
   const [unlockedCycles, setUnlockedCycles] = useState<number>(0);
   const vipActive = unlockedCycles >= 1;
-
-  // onboarding date (dia 1 começa no cadastro)
   const [startAtMs, setStartAtMs] = useState<number | null>(null);
-
-  // Firestore source of truth (cycleDays, ciclo 1)
   const [days, setDays] = useState<DayDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fallback = useMemo(() => buildCycleFallback(), []);
 
+  useEffect(() => {
+    const savedLanguage = window.localStorage.getItem("barrigaseca-language");
+    if (isLanguage(savedLanguage)) setLanguage(savedLanguage);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("barrigaseca-language", language);
+  }, [language]);
+
   const todayProgramDay = useMemo(() => {
     if (!startAtMs) return null;
-    const elapsed = diffDaysUtc(startAtMs, Date.now()) + 1; // Dia 1 no cadastro
+    const elapsed = diffDaysUtc(startAtMs, Date.now()) + 1;
     return clamp(elapsed, 1, DAYS_PER_CYCLE);
   }, [startAtMs]);
 
-  // sempre ciclo 1 nesta tela (FREE funnel)
   const dayPlan: DayDoc | null = useMemo(() => {
     const fromFs = days.find((d) => d.day === selectedDay);
     if (fromFs) return fromFs;
     return fallback.find((d) => d.day === selectedDay) ?? null;
   }, [days, fallback, selectedDay]);
 
-  // Lock: grátis só 1–7; VIP libera 1–30 do ciclo 1
   const isVipLocked = !vipActive && selectedDay > FREE_DAYS;
 
   useEffect(() => {
@@ -235,19 +225,14 @@ export default function FreePage() {
         const data = (snap.data() as UserProfile) ?? {};
         setUnlockedCycles(resolveUnlockedCycles(data));
 
-        // Dia 1 começa no createdAt (se existir)
         const createdMs = asMillis(data.createdAt);
         setStartAtMs(createdMs);
 
-        // Default do calendário: "hoje" do programa (se disponível)
         if (createdMs) {
           const d = clamp(diffDaysUtc(createdMs, Date.now()) + 1, 1, DAYS_PER_CYCLE);
-          setSelectedDay((prev) => (prev ? prev : d));
-          // Se estava em dia inválido, reposiciona
           setSelectedDay(d);
         }
       } catch {
-        // fail-safe
         setUnlockedCycles(0);
         setStartAtMs(null);
       }
@@ -260,21 +245,17 @@ export default function FreePage() {
     async function loadFromFirestore() {
       try {
         setLoading(true);
-        setLoadError(null);
-
-        // cycleDays: filtra ciclo 1 e ordena pelos dias
         const ref = collection(db, CYCLE_COLLECTION);
         const q = query(ref, where("cycle", "==", FREE_CYCLE), orderBy("day", "asc"));
         const snap = await getDocs(q);
-
         const list = snap.docs.map((d) => d.data() as DayDoc).filter(Boolean);
         setDays(list);
 
         if (list.length > 0 && !list.some((x) => x.day === selectedDay)) {
           setSelectedDay(list[0]?.day ?? 1);
         }
-      } catch (e: any) {
-        setLoadError(e?.message ?? "Falha ao carregar Firestore.");
+      } catch {
+        setDays([]);
       } finally {
         setLoading(false);
       }
@@ -285,152 +266,89 @@ export default function FreePage() {
   }, []);
 
   const headerStatus = useMemo(() => {
-    if (!authReady) return "Sincronizando…";
-    if (!uid) return "Visitante";
-    return vipActive ? `VIP • Ciclos liberados: ${unlockedCycles}` : "Grátis (7 dias)";
-  }, [authReady, uid, vipActive, unlockedCycles]);
+    if (!authReady) return t.syncing;
+    if (!uid) return t.visitor;
+    return vipActive ? `${t.vipCycles}: ${unlockedCycles}` : t.freeStatus;
+  }, [authReady, uid, vipActive, unlockedCycles, t]);
 
   return (
     <main style={{ padding: 28, maxWidth: 1100, margin: "28px auto" }}>
-      {/* HERO */}
-      <section
-        style={{
-          padding: 24,
-          borderRadius: 18,
-          border: "1px solid #eee",
-          background: "#fff",
-        }}
-      >
-        <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>
-          Calendário Barriga Seca — Ciclo {FREE_CYCLE}
-        </h1>
+      <section style={sectionCard}>
+        <div style={topRow}>
+          <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>
+            {t.heroTitle} - {t.cycle} {FREE_CYCLE}
+          </h1>
+
+          <div style={languageGroup} aria-label="Language">
+            {languages.map((item) => (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => setLanguage(item.code)}
+                style={{
+                  ...languageButton,
+                  ...(language === item.code ? languageButtonActive : null),
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <p style={{ color: "#555", marginTop: 10, lineHeight: 1.5 }}>
-          Operação: <strong>treino</strong> + <strong>receitas do dia</strong>.{" "}
-          <strong>{FREE_DAYS} dias grátis</strong> e depois desbloqueio por assinatura.
+          {t.heroTextStart} <strong>{t.workout}</strong> + <strong>{t.recipes}</strong>.{" "}
+          <strong>{FREE_DAYS} {t.heroTextEnd}</strong>
         </p>
 
         <div style={{ marginTop: 10, fontSize: 12, fontWeight: 900, color: "#111" }}>
-          Status: {headerStatus}
+          {t.status}: {headerStatus}
           {uid && typeof todayProgramDay === "number" && (
             <span style={{ marginLeft: 10, color: "#555" }}>
-              • Hoje no programa: Dia {todayProgramDay}
+              - {t.todayProgram}: {t.day} {todayProgramDay}
             </span>
           )}
         </div>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
-          <a
-            href="/login"
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              fontWeight: 900,
-              textDecoration: "none",
-              color: "#111",
-              background: "#fff",
-            }}
-          >
-            Entrar / Criar conta
-          </a>
-
-          <a
-            href="/vip"
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #111",
-              fontWeight: 900,
-              textDecoration: "none",
-              color: "#fff",
-              background: "#111",
-            }}
-          >
-            Virar VIP e liberar o ciclo
-          </a>
-
-          <a
-            href="/app"
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #111",
-              fontWeight: 900,
-              textDecoration: "none",
-              color: "#111",
-              background: "#fff",
-            }}
-          >
-            Abrir App (membro)
-          </a>
+          <a href="/login" style={linkGhost}>{t.loginCreate}</a>
+          <a href="/vip" style={linkDark}>{t.becomeVip}</a>
+          <a href="/app" style={linkGhostStrong}>{t.openApp}</a>
         </div>
 
-        {/* HUB VIP */}
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 14, fontWeight: 950, color: "#111", marginBottom: 10 }}>
-            Área VIP (quick wins)
+            {t.vipArea}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            }}
-          >
+          <div style={featureGrid}>
             <VipFeatureCard
-              title="Checklist de hábitos"
-              desc="Execução diária simples. Consistência vira resultado."
+              title={t.checklistTitle}
+              desc={t.checklistDesc}
               href="/vip/checklist"
-              badge="VIP"
+              badge={t.vipLabel}
+              openLabel={t.open}
             />
             <VipFeatureCard
-              title="Metas"
-              desc="Defina meta semanal e acompanhe o progresso."
+              title={t.goalsTitle}
+              desc={t.goalsDesc}
               href="/vip/metas"
-              badge="VIP"
+              badge={t.vipLabel}
+              openLabel={t.open}
             />
           </div>
         </div>
 
-        <div style={{ marginTop: 12, color: "#666", fontSize: 13 }}>
-          {loading ? (
-            <span>Carregando calendário…</span>
-          ) : loadError ? (
-            <span>
-              Firestore: <strong>offline</strong> ({loadError}). Usando fallback.
-            </span>
-          ) : days.length > 0 ? (
-            <span>
-              Firestore: <strong>OK</strong> • {days.length} dias carregados (Ciclo {FREE_CYCLE}).
-            </span>
-          ) : (
-            <span>Firestore sem dados. Usando fallback.</span>
-          )}
-        </div>
+        {loading && (
+          <div style={{ marginTop: 12, color: "#666", fontSize: 13 }}>
+            {t.loadingCalendar}
+          </div>
+        )}
       </section>
 
-      {/* LAYOUT */}
-      <section
-        style={{
-          marginTop: 18,
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "360px 1fr",
-          alignItems: "start",
-        }}
-      >
-        {/* CALENDAR */}
-        <div
-          style={{
-            padding: 16,
-            borderRadius: 18,
-            border: "1px solid #eee",
-            background: "#fff",
-          }}
-        >
-          <h2 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>Selecione o dia</h2>
+      <section style={mainGrid}>
+        <div style={sectionCardSmall}>
+          <h2 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>{t.selectDay}</h2>
 
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(5, 1fr)" }}>
             {Array.from({ length: DAYS_PER_CYCLE }).map((_, i) => {
@@ -452,157 +370,161 @@ export default function FreePage() {
                     color: locked ? "#999" : "#111",
                     position: "relative",
                   }}
-                  aria-label={`Dia ${d}${locked ? " (VIP)" : ""}`}
-                  title={locked ? "VIP" : "Grátis"}
+                  aria-label={`${t.day} ${d}${locked ? ` (${t.vipLabel})` : ""}`}
+                  title={locked ? t.vipLabel : t.freeLabel}
                 >
                   {d}
-                  {locked && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        right: 8,
-                        top: 6,
-                        fontSize: 11,
-                        fontWeight: 900,
-                        color: "#999",
-                      }}
-                    >
-                      VIP
-                    </span>
-                  )}
+                  {locked && <span style={vipChip}>{t.vipLabel}</span>}
                 </button>
               );
             })}
           </div>
 
           <div style={{ marginTop: 14, color: "#666", fontSize: 13, lineHeight: 1.4 }}>
-            <strong>Grátis:</strong> dias 1–{FREE_DAYS}. <br />
-            <strong>VIP:</strong> dias {FREE_DAYS + 1}–{DAYS_PER_CYCLE}.
+            <strong>{t.freeLabel}:</strong> {t.day.toLowerCase()}s 1-{FREE_DAYS}. <br />
+            <strong>{t.vipLabel}:</strong> {t.day.toLowerCase()}s {FREE_DAYS + 1}-{DAYS_PER_CYCLE}.
           </div>
         </div>
 
-        {/* DAY DETAILS */}
-        <div
-          style={{
-            padding: 18,
-            borderRadius: 18,
-            border: "1px solid #eee",
-            background: "#fff",
-          }}
-        >
+        <div style={sectionCardSmall}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <h2 style={{ marginTop: 0, fontSize: 22, fontWeight: 900 }}>
-              Dia {selectedDay} — {isVipLocked ? "Conteúdo VIP" : "Conteúdo liberado"}
+              {t.day} {selectedDay} - {isVipLocked ? t.contentVip : t.contentUnlocked}
             </h2>
 
-            {isVipLocked && (
-              <a
-                href="/vip"
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #111",
-                  fontWeight: 900,
-                  textDecoration: "none",
-                  color: "#fff",
-                  background: "#111",
-                }}
-              >
-                Liberar agora (VIP)
-              </a>
-            )}
+            {isVipLocked && <a href="/vip" style={linkDark}>{t.unlockNow}</a>}
           </div>
 
           {!dayPlan ? (
-            <p style={{ color: "#666" }}>Nenhum conteúdo encontrado para este dia.</p>
+            <p style={{ color: "#666" }}>{t.noContent}</p>
           ) : isVipLocked ? (
-            <LockedPreview />
+            <LockedPreview t={t} />
           ) : (
-            <DayContent dayPlan={dayPlan} />
+            <DayContent dayPlan={dayPlan} t={t} />
           )}
 
           {!isVipLocked && (
             <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={() => setSelectedDay((d) => Math.max(1, d - 1))} style={navBtn}>
-                ← Dia anterior
+                {"<"} {t.previousDay}
               </button>
               <button onClick={() => setSelectedDay((d) => Math.min(DAYS_PER_CYCLE, d + 1))} style={navBtn}>
-                Próximo dia →
+                {t.nextDay} {">"}
               </button>
             </div>
           )}
         </div>
       </section>
 
-      {/* CTA FINAL */}
-      <section
-        style={{
-          marginTop: 18,
-          padding: 18,
-          borderRadius: 18,
-          border: "1px solid #eee",
-          background: "#fff",
-        }}
-      >
-        <h3 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>Quer liberar o ciclo completo?</h3>
+      <section style={{ ...sectionCard, marginTop: 18 }}>
+        <h3 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>{t.finalTitle}</h3>
         <p style={{ color: "#555", marginTop: 8, lineHeight: 1.5 }}>
-          No VIP você desbloqueia o ciclo inteiro (30 dias), receitas completas, treinos e também{" "}
-          <strong>Checklist</strong> + <strong>Metas</strong>.
+          {t.finalText} <strong>Checklist</strong> + <strong>{t.goalsTitle}</strong>.
         </p>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <a
-            href="/vip"
-            style={{
-              display: "inline-block",
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #111",
-              fontWeight: 900,
-              textDecoration: "none",
-              color: "#fff",
-              background: "#111",
-            }}
-          >
-            Virar VIP
-          </a>
-
-          <a
-            href="/vip/metas"
-            style={{
-              display: "inline-block",
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              fontWeight: 900,
-              textDecoration: "none",
-              color: "#111",
-              background: "#fff",
-            }}
-          >
-            Ver Metas (VIP)
-          </a>
-
-          <a
-            href="/vip/checklist"
-            style={{
-              display: "inline-block",
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              fontWeight: 900,
-              textDecoration: "none",
-              color: "#111",
-              background: "#fff",
-            }}
-          >
-            Ver Checklist (VIP)
-          </a>
+          <a href="/vip" style={linkDark}>{t.becomeVip}</a>
+          <a href="/vip/metas" style={linkGhost}>{t.viewGoals}</a>
+          <a href="/vip/checklist" style={linkGhost}>{t.viewChecklist}</a>
         </div>
       </section>
     </main>
   );
 }
+
+type FreeTexts = (typeof translations)[Language]["free"];
+
+const sectionCard: React.CSSProperties = {
+  padding: 24,
+  borderRadius: 18,
+  border: "1px solid #eee",
+  background: "#fff",
+};
+
+const sectionCardSmall: React.CSSProperties = {
+  padding: 16,
+  borderRadius: 18,
+  border: "1px solid #eee",
+  background: "#fff",
+};
+
+const topRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const languageGroup: React.CSSProperties = {
+  display: "inline-flex",
+  gap: 6,
+  padding: 4,
+  borderRadius: 999,
+  border: "1px solid rgba(17,17,17,0.10)",
+  background: "#fff",
+};
+
+const languageButton: React.CSSProperties = {
+  border: "none",
+  borderRadius: 999,
+  background: "transparent",
+  color: "#111",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 950,
+  padding: "7px 10px",
+};
+
+const languageButtonActive: React.CSSProperties = {
+  background: "#111",
+  color: "#fff",
+};
+
+const featureGrid: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+};
+
+const mainGrid: React.CSSProperties = {
+  marginTop: 18,
+  display: "grid",
+  gap: 16,
+  gridTemplateColumns: "360px 1fr",
+  alignItems: "start",
+};
+
+const linkGhost: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid #ddd",
+  fontWeight: 900,
+  textDecoration: "none",
+  color: "#111",
+  background: "#fff",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const linkGhostStrong: React.CSSProperties = {
+  ...linkGhost,
+  border: "1px solid #111",
+};
+
+const linkDark: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid #111",
+  fontWeight: 900,
+  textDecoration: "none",
+  color: "#fff",
+  background: "#111",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
 
 const navBtn: React.CSSProperties = {
   padding: 12,
@@ -613,114 +535,110 @@ const navBtn: React.CSSProperties = {
   background: "#fff",
 };
 
+const vipChip: React.CSSProperties = {
+  position: "absolute",
+  right: 8,
+  top: 6,
+  fontSize: 11,
+  fontWeight: 900,
+  color: "#999",
+};
+
 function VipFeatureCard({
   title,
   desc,
   href,
   badge,
+  openLabel,
 }: {
   title: string;
   desc: string;
   href: string;
   badge: string;
+  openLabel: string;
 }) {
   return (
-    <a
-      href={href}
-      style={{
-        textDecoration: "none",
-        color: "#111",
-        borderRadius: 18,
-        border: "1px solid #eee",
-        background: "#fff",
-        padding: 16,
-        display: "block",
-      }}
-    >
+    <a href={href} style={featureCard}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontSize: 16, fontWeight: 950 }}>{title}</div>
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 950,
-            padding: "6px 10px",
-            borderRadius: 999,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {badge}
-        </div>
+        <div style={featureBadge}>{badge}</div>
       </div>
       <div style={{ marginTop: 10, color: "#555", fontWeight: 700, lineHeight: 1.5 }}>{desc}</div>
-      <div style={{ marginTop: 12, fontWeight: 950 }}>Abrir →</div>
+      <div style={{ marginTop: 12, fontWeight: 950 }}>{openLabel} {">"}</div>
     </a>
   );
 }
 
-function DayContent({ dayPlan }: { dayPlan: DayDoc }) {
+const featureCard: React.CSSProperties = {
+  textDecoration: "none",
+  color: "#111",
+  borderRadius: 18,
+  border: "1px solid #eee",
+  background: "#fff",
+  padding: 16,
+  display: "block",
+};
+
+const featureBadge: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 950,
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: "1px solid #111",
+  background: "#111",
+  color: "#fff",
+  whiteSpace: "nowrap",
+};
+
+function DayContent({ dayPlan, t }: { dayPlan: DayDoc; t: FreeTexts }) {
   const title =
     dayPlan.title && dayPlan.title.trim().length > 0
       ? dayPlan.title
-      : `Dia ${dayPlan.day} — Barriga Seca`;
+      : `${t.day} ${dayPlan.day} - ${t.dayFallbackTitle}`;
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <Block title={title} items={[]} hideList />
+      <Block title={t.workoutBlock} items={dayPlan.workout ?? []} />
 
-      <Block title="Treino do dia (10–15 min)" items={dayPlan.workout ?? []} />
-
-      <div
-        style={{
-          display: "grid",
-          gap: 14,
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-        }}
-      >
-        <Block title="Café da manhã" items={dayPlan.meals?.cafe ?? []} />
-        <Block title="Almoço" items={dayPlan.meals?.almoco ?? []} />
-        <Block title="Café da tarde" items={dayPlan.meals?.lanche ?? []} />
-        <Block title="Besteirinhas (controladas)" items={dayPlan.meals?.besteirinhas ?? []} />
-        <Block title="Janta" items={dayPlan.meals?.janta ?? []} />
+      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+        <Block title={t.breakfast} items={dayPlan.meals?.cafe ?? []} />
+        <Block title={t.lunch} items={dayPlan.meals?.almoco ?? []} />
+        <Block title={t.snack} items={dayPlan.meals?.lanche ?? []} />
+        <Block title={t.treats} items={dayPlan.meals?.besteirinhas ?? []} />
+        <Block title={t.dinner} items={dayPlan.meals?.janta ?? []} />
       </div>
 
       {Array.isArray(dayPlan.tips) && dayPlan.tips.length > 0 && (
-        <Block title="Dicas do dia" items={dayPlan.tips} />
+        <Block title={t.dailyTips} items={dayPlan.tips} />
       )}
     </div>
   );
 }
 
-function LockedPreview() {
+function LockedPreview({ t }: { t: FreeTexts }) {
   return (
     <div style={{ marginTop: 10 }}>
-      <p style={{ color: "#555", lineHeight: 1.5 }}>Esse dia faz parte do calendário VIP. Ao liberar, você vê:</p>
-
+      <p style={{ color: "#555", lineHeight: 1.5 }}>{t.lockedText}</p>
       <ul style={{ lineHeight: 1.8, fontWeight: 700, color: "#222" }}>
-        <li>Treino completo do dia</li>
-        <li>Receitas do dia (premium)</li>
-        <li>Checklist de hábitos</li>
-        <li>Metas</li>
+        {t.lockedItems.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
       </ul>
-
-      <div
-        style={{
-          marginTop: 12,
-          padding: 14,
-          borderRadius: 14,
-          border: "1px dashed #ddd",
-          background: "#fafafa",
-          color: "#666",
-          fontWeight: 700,
-        }}
-      >
-        Prévia: “Treino + Cardápio + Checklist + Metas”
-      </div>
+      <div style={previewBox}>{t.preview}</div>
     </div>
   );
 }
+
+const previewBox: React.CSSProperties = {
+  marginTop: 12,
+  padding: 14,
+  borderRadius: 14,
+  border: "1px dashed #ddd",
+  background: "#fafafa",
+  color: "#666",
+  fontWeight: 700,
+};
 
 function Block({
   title,
