@@ -5,6 +5,13 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, Timestamp } from "firebase/firestore";
+import {
+  defaultLanguage,
+  isLanguage,
+  languages,
+  translations,
+  type Language,
+} from "@/lib/i18n";
 
 type CheckoutResponse = {
   url?: string;
@@ -13,14 +20,11 @@ type CheckoutResponse = {
 
 type UserProfile = {
   unlockedCycles?: number;
-
-  // compat legado
   vip?: boolean;
   vipActive?: boolean;
   isVip?: boolean;
   vip_enabled?: boolean;
   subscriptionStatus?: string;
-
   vipUntil?: any;
   vip_until?: any;
   vipExpiresAt?: any;
@@ -33,8 +37,8 @@ function asMillis(v: any): number | null {
   if (typeof v?.seconds === "number") return v.seconds * 1000;
   if (typeof v === "number") return v;
   if (typeof v === "string") {
-    const t = Date.parse(v);
-    return Number.isNaN(t) ? null : t;
+    const parsed = Date.parse(v);
+    return Number.isNaN(parsed) ? null : parsed;
   }
   return null;
 }
@@ -62,17 +66,17 @@ function resolveUnlockedCycles(data: UserProfile): number {
   const untilMs = asMillis(until);
   const untilOk = typeof untilMs === "number" ? untilMs > Date.now() : false;
 
-  // Legado: VIP ativo = pelo menos 1 ciclo liberado
   return flag || statusOk || untilOk ? 1 : 0;
 }
 
 export default function VipClient() {
+  const [language, setLanguage] = useState<Language>(defaultLanguage);
+  const t = translations[language].vip;
+
   const [loading, setLoading] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
-
-  // Novo modelo
   const [entLoading, setEntLoading] = useState(true);
   const [unlockedCycles, setUnlockedCycles] = useState<number>(0);
 
@@ -80,12 +84,20 @@ export default function VipClient() {
   const router = useRouter();
 
   React.useEffect(() => {
+    const savedLanguage = window.localStorage.getItem("barrigaseca-language");
+    if (isLanguage(savedLanguage)) setLanguage(savedLanguage);
+  }, []);
+
+  React.useEffect(() => {
+    window.localStorage.setItem("barrigaseca-language", language);
+  }, [language]);
+
+  React.useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUid(u?.uid ?? null);
       setEmail(u?.email ?? null);
       setAuthReady(true);
 
-      // sem user => sem entitlement
       if (!u?.uid) {
         setUnlockedCycles(0);
         setEntLoading(false);
@@ -114,33 +126,30 @@ export default function VipClient() {
   const banner = useMemo(() => {
     if (success) {
       return {
-        title: "Pagamento confirmado ✅",
-        desc: "Se o acesso ainda não refletiu, aguarde alguns segundos e atualize a página (webhook).",
+        title: t.successTitle,
+        desc: t.successDesc,
         tone: "ok" as const,
       };
     }
     if (canceled) {
       return {
-        title: "Pagamento cancelado",
-        desc: "Sem estresse. Você pode tentar novamente quando quiser.",
+        title: t.canceledTitle,
+        desc: t.canceledDesc,
         tone: "warn" as const,
       };
     }
     return null;
-  }, [success, canceled]);
+  }, [success, canceled, t]);
 
   const accessLine = useMemo(() => {
-    if (!authReady) return "Sincronizando…";
-    if (!uid) return "Você precisa estar logado para assinar.";
-
-    if (entLoading) return "Validando seu acesso…";
-
+    if (!authReady) return t.syncing;
+    if (!uid) return t.loginRequired;
+    if (entLoading) return t.validatingAccess;
     if (unlockedCycles >= 1) {
-      return `Acesso ativo • Ciclos liberados: ${unlockedCycles} (Ciclo 1 já liberado).`;
+      return `${t.activeAccess}: ${unlockedCycles} (${t.cycleOneUnlocked}).`;
     }
-
-    return "Sem ciclos liberados ainda • Assine para liberar o Ciclo 1 (30 dias).";
-  }, [authReady, uid, entLoading, unlockedCycles]);
+    return t.noCycles;
+  }, [authReady, uid, entLoading, unlockedCycles, t]);
 
   async function handleCheckout() {
     if (loading) return;
@@ -168,12 +177,12 @@ export default function VipClient() {
         data = (await res.json()) as CheckoutResponse;
       } catch {}
 
-      if (!res.ok) throw new Error(data?.error || "Falha ao iniciar checkout.");
-      if (!data?.url) throw new Error("Checkout sem URL de redirecionamento.");
+      if (!res.ok) throw new Error(data?.error || t.checkoutError);
+      if (!data?.url) throw new Error(t.missingCheckoutUrl);
 
       window.location.href = data.url;
     } catch (e: any) {
-      alert(e?.message ?? "Erro inesperado.");
+      alert(e?.message ?? t.unexpectedError);
     } finally {
       setLoading(false);
     }
@@ -192,12 +201,12 @@ export default function VipClient() {
   }
 
   const primaryCtaLabel = useMemo(() => {
-    if (!authReady) return "Carregando…";
-    if (!uid) return "Entrar para assinar";
-    if (entLoading) return "Validando…";
-    if (unlockedCycles >= 1) return "Renovar e liberar próximo ciclo";
-    return "Assinar VIP e liberar Ciclo 1";
-  }, [authReady, uid, entLoading, unlockedCycles]);
+    if (!authReady) return t.loading;
+    if (!uid) return t.signInToSubscribe;
+    if (entLoading) return t.validatingAccess;
+    if (unlockedCycles >= 1) return t.renewing;
+    return t.subscribe;
+  }, [authReady, uid, entLoading, unlockedCycles, t]);
 
   return (
     <main style={styles.page}>
@@ -205,23 +214,32 @@ export default function VipClient() {
 
       <div style={styles.shell}>
         <header style={styles.header}>
-          <div style={styles.badge}>Barriga Seca • VIP</div>
-          <h1 style={styles.h1}>Seja membro VIP</h1>
-          <p style={styles.sub}>
-            Modelo novo: <strong>cada assinatura mensal libera +1 ciclo</strong> de 30 dias (conteúdo
-            cumulativo). Você mantém acesso aos ciclos já liberados e evolui mês a mês.
-          </p>
+          <div style={styles.topRow}>
+            <div style={styles.badge}>{t.brand}</div>
+            <div style={styles.languageGroup} aria-label="Language">
+              {languages.map((item) => (
+                <button
+                  key={item.code}
+                  type="button"
+                  onClick={() => setLanguage(item.code)}
+                  style={{
+                    ...styles.languageButton,
+                    ...(language === item.code ? styles.languageButtonActive : null),
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <h1 style={styles.h1}>{t.title}</h1>
+          <p style={styles.sub}>{t.subtitle}</p>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="/vip/progresso" style={styles.btnGhost}>
-              Progresso
-            </a>
-            <a href="/vip/checklist" style={styles.btnGhost}>
-              Checklist
-            </a>
-            <a href="/vip/metas" style={styles.btnGhost}>
-              Metas
-            </a>
+            <a href="/vip/progresso" style={styles.btnGhost}>{t.progress}</a>
+            <a href="/vip/checklist" style={styles.btnGhost}>{t.checklist}</a>
+            <a href="/vip/metas" style={styles.btnGhost}>{t.goals}</a>
           </div>
 
           <div style={{ marginTop: 12, fontSize: 12, fontWeight: 900, color: "#111" }}>{accessLine}</div>
@@ -244,82 +262,39 @@ export default function VipClient() {
               {banner.desc}
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <a href="/app" style={styles.btnDark}>
-                Ir para o App
-              </a>
-              <a href="/vip/progresso" style={styles.btnGhost}>
-                Ver Progresso
-              </a>
-              <a href="/free" style={styles.btnGhost}>
-                Ver área grátis
-              </a>
+              <a href="/app" style={styles.btnDark}>{t.goApp}</a>
+              <a href="/vip/progresso" style={styles.btnGhost}>{t.viewProgress}</a>
+              <a href="/free" style={styles.btnGhost}>{t.freeArea}</a>
             </div>
           </section>
         )}
 
         <section style={styles.grid}>
-          <Card
-            title="O que você desbloqueia"
-            items={[
-              "Ciclo 1 completo (30 dias)",
-              "Receitas do dia + variações",
-              "Treinos guiados do dia",
-              "Checklist de hábitos (VIP)",
-              "Metas (VIP)",
-              "Progresso (Dashboard VIP)",
-              "A cada renovação: +1 ciclo liberado",
-            ]}
-          />
-          <Card
-            title="Pra quem é"
-            items={[
-              "Quer barriga mais seca com rotina objetiva",
-              "Não tem tempo pra treinos longos",
-              "Precisa de direção diária",
-              "Quer praticidade nas refeições",
-            ]}
-          />
-          <Card
-            title="Como funciona"
-            items={[
-              "Assinatura mensal recorrente",
-              "Pagamento com Pix por 30 dias",
-              "Acesso cumulativo: ciclos liberados não expiram",
-              "Você precisa estar logado para assinar",
-            ]}
-          />
+          <Card title={t.unlockTitle} items={t.unlockItems} />
+          <Card title={t.audienceTitle} items={t.audienceItems} />
+          <Card title={t.howTitle} items={t.howItems} />
         </section>
 
         <section style={styles.pricing}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 950, color: "#fff" }}>Plano VIP</div>
-            <div style={{ marginTop: 8, opacity: 0.9, fontWeight: 700 }}>
-              Escolha entre assinatura recorrente no cartão ou pagamento avulso via Pix por 30 dias
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 950, color: "#fff" }}>{t.planTitle}</div>
+            <div style={{ marginTop: 8, opacity: 0.9, fontWeight: 700 }}>{t.planDesc}</div>
           </div>
 
           <button onClick={handleCheckout} disabled={loading} style={styles.payBtn}>
-            {loading ? "Abrindo pagamento…" : primaryCtaLabel}
+            {loading ? t.openingPayment : primaryCtaLabel}
           </button>
 
           <button onClick={handlePixCheckout} disabled={loading} style={styles.payBtnPix}>
-            {loading ? "Abrindo pagamento…" : "Pagar com Pix (30 dias)"}
+            {loading ? t.openingPayment : t.pixPayment}
           </button>
 
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-            No Pix, o pagamento será aberto no link seguro do Asaas.
-          </div>
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>{t.pixNote}</div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="/app" style={styles.btnLight}>
-              Abrir o App
-            </a>
-            <a href="/vip/progresso" style={styles.btnGhostOnDark}>
-              Abrir Progresso
-            </a>
-            <a href="/free" style={styles.btnGhostOnDark}>
-              Ver área grátis
-            </a>
+            <a href="/app" style={styles.btnLight}>{t.openApp}</a>
+            <a href="/vip/progresso" style={styles.btnGhostOnDark}>{t.openProgress}</a>
+            <a href="/free" style={styles.btnGhostOnDark}>{t.freeArea}</a>
           </div>
         </section>
       </div>
@@ -327,7 +302,7 @@ export default function VipClient() {
   );
 }
 
-function Card({ title, items }: { title: string; items: string[] }) {
+function Card({ title, items }: { title: string; items: readonly string[] }) {
   return (
     <div style={styles.card}>
       <h3 style={{ marginTop: 0, fontSize: 16, fontWeight: 950, color: "#111" }}>{title}</h3>
@@ -369,6 +344,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.92)",
   },
+  topRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
   badge: {
     display: "inline-flex",
     padding: "8px 12px",
@@ -378,6 +360,28 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 950,
     fontSize: 12,
     color: "#111",
+  },
+  languageGroup: {
+    display: "inline-flex",
+    gap: 6,
+    padding: 4,
+    borderRadius: 999,
+    border: "1px solid rgba(17,17,17,0.10)",
+    background: "#fff",
+  },
+  languageButton: {
+    border: "none",
+    borderRadius: 999,
+    background: "transparent",
+    color: "#111",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 950,
+    padding: "7px 10px",
+  },
+  languageButtonActive: {
+    background: "#111",
+    color: "#fff",
   },
   h1: {
     margin: "10px 0 6px",
