@@ -17,6 +17,13 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
+import {
+  defaultLanguage,
+  isLanguage,
+  languages,
+  translations,
+  type Language,
+} from "@/lib/i18n";
 
 function formatErr(e: unknown) {
   const msg =
@@ -26,24 +33,18 @@ function formatErr(e: unknown) {
   return code ? `${code}: ${msg}` : msg;
 }
 
-function friendlyAuthError(raw: string) {
-  if (raw.includes("auth/unauthorized-domain"))
-    return "Domínio não autorizado no Firebase (Authorized domains).";
-  if (raw.includes("auth/invalid-email")) return "E-mail inválido.";
-  if (raw.includes("auth/user-not-found")) return "Usuário não encontrado.";
-  if (raw.includes("auth/wrong-password")) return "Senha incorreta.";
-  if (raw.includes("auth/too-many-requests"))
-    return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
-  if (raw.includes("auth/email-already-in-use"))
-    return "Este e-mail já está cadastrado. Use “Entrar”.";
-  if (raw.includes("auth/weak-password"))
-    return "Senha fraca. Use no mínimo 6 caracteres.";
-  if (raw.includes("auth/invalid-credential"))
-    return "Credenciais inválidas. Confira e-mail/senha.";
+function friendlyAuthError(raw: string, t: (typeof translations)[Language]["login"]["errors"]) {
+  if (raw.includes("auth/unauthorized-domain")) return t.unauthorizedDomain;
+  if (raw.includes("auth/invalid-email")) return t.invalidEmail;
+  if (raw.includes("auth/user-not-found")) return t.userNotFound;
+  if (raw.includes("auth/wrong-password")) return t.wrongPassword;
+  if (raw.includes("auth/too-many-requests")) return t.tooManyRequests;
+  if (raw.includes("auth/email-already-in-use")) return t.emailAlreadyInUse;
+  if (raw.includes("auth/weak-password")) return t.weakPassword;
+  if (raw.includes("auth/invalid-credential")) return t.invalidCredential;
   return raw;
 }
 
-// ✅ Governança: garante users/{uid} sem derrubar vip existente
 async function ensureUserDoc(u: User) {
   const ref = doc(db, "users", u.uid);
   const snap = await getDoc(ref);
@@ -51,7 +52,6 @@ async function ensureUserDoc(u: User) {
   const email = (u.email ?? "").toLowerCase();
 
   if (!snap.exists()) {
-    // Primeiro cadastro: cria com vip=false
     await setDoc(ref, {
       uid: u.uid,
       email,
@@ -63,7 +63,6 @@ async function ensureUserDoc(u: User) {
     return;
   }
 
-  // Usuário já existe: atualiza só campos operacionais (NÃO toca no vip)
   await updateDoc(ref, {
     email,
     updatedAt: serverTimestamp(),
@@ -73,6 +72,9 @@ async function ensureUserDoc(u: User) {
 
 export default function LoginPage() {
   const router = useRouter();
+
+  const [language, setLanguage] = useState<Language>(defaultLanguage);
+  const t = translations[language].login;
 
   const [loading, setLoading] = useState(true);
   const [authedEmail, setAuthedEmail] = useState<string | null>(null);
@@ -89,6 +91,15 @@ export default function LoginPage() {
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const savedLanguage = window.localStorage.getItem("barrigaseca-language");
+    if (isLanguage(savedLanguage)) setLanguage(savedLanguage);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("barrigaseca-language", language);
+  }, [language]);
+
+  useEffect(() => {
     mountedRef.current = true;
 
     const unsub = onAuthStateChanged(auth, async (u: User | null) => {
@@ -98,7 +109,7 @@ export default function LoginPage() {
         try {
           await ensureUserDoc(u);
         } catch (e) {
-          setError(friendlyAuthError(formatErr(e)));
+          setError(friendlyAuthError(formatErr(e), t.errors));
         }
 
         setAuthedEmail(u.email ?? null);
@@ -115,15 +126,18 @@ export default function LoginPage() {
       unsub();
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     };
-  }, [router]);
+  }, [router, t.errors]);
 
   const subtitle = useMemo(() => {
-    if (loading) return "Carregando…";
-    if (authedEmail) return `Logado como ${authedEmail}`;
-    return mode === "login"
-      ? "Entre para acessar a área do app e conteúdo VIP."
-      : "Crie sua conta para começar.";
-  }, [loading, authedEmail, mode]);
+    if (loading) return t.loading;
+    if (authedEmail) return `${t.loggedAs} ${authedEmail}`;
+    return mode === "login" ? t.loginSubtitle : t.registerSubtitle;
+  }, [loading, authedEmail, mode, t]);
+
+  function changeLanguage(nextLanguage: Language) {
+    setLanguage(nextLanguage);
+    setError(null);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -135,10 +149,10 @@ export default function LoginPage() {
     const pw = password;
     const cpw = confirmPassword;
 
-    if (!em) return setError("Informe seu e-mail.");
-    if (!pw || pw.length < 6) return setError("Informe uma senha com pelo menos 6 caracteres.");
-    if (mode === "register" && !cpw) return setError("Repita sua senha.");
-    if (mode === "register" && pw !== cpw) return setError("As senhas não conferem.");
+    if (!em) return setError(t.validation.emailRequired);
+    if (!pw || pw.length < 6) return setError(t.validation.passwordRequired);
+    if (mode === "register" && !cpw) return setError(t.validation.repeatPassword);
+    if (mode === "register" && pw !== cpw) return setError(t.validation.passwordMismatch);
 
     try {
       setSubmitting(true);
@@ -146,7 +160,7 @@ export default function LoginPage() {
       timeoutRef.current = window.setTimeout(() => {
         if (!mountedRef.current) return;
         setSubmitting(false);
-        setError("Tempo excedido ao autenticar. Recarregue a página e tente novamente.");
+        setError(t.validation.timeout);
       }, 12000);
 
       let user: User | null = null;
@@ -164,7 +178,7 @@ export default function LoginPage() {
       router.replace("/app");
     } catch (e2) {
       const raw = formatErr(e2);
-      setError(friendlyAuthError(raw));
+      setError(friendlyAuthError(raw, t.errors));
     } finally {
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -179,12 +193,12 @@ export default function LoginPage() {
       setError(null);
       setLoading(false);
     } catch (e) {
-      setError(friendlyAuthError(formatErr(e)));
+      setError(friendlyAuthError(formatErr(e), t.errors));
     }
   }
 
   if (loading) {
-    return <main style={{ padding: 32 }}>Carregando…</main>;
+    return <main style={{ padding: 32 }}>{t.loading}</main>;
   }
 
   return (
@@ -192,37 +206,55 @@ export default function LoginPage() {
       <div style={styles.bg} aria-hidden />
       <div style={styles.shell}>
         <section style={styles.card}>
-          <div style={styles.badge}>Barriga Seca • Acesso</div>
-          <h1 style={styles.h1}>{mode === "login" ? "Entrar" : "Criar conta"}</h1>
+          <div style={styles.topRow}>
+            <div style={styles.badge}>{t.brand}</div>
+            <div style={styles.languageGroup} aria-label="Language">
+              {languages.map((item) => (
+                <button
+                  key={item.code}
+                  type="button"
+                  onClick={() => changeLanguage(item.code)}
+                  style={{
+                    ...styles.languageButton,
+                    ...(language === item.code ? styles.languageButtonActive : null),
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <h1 style={styles.h1}>{mode === "login" ? t.loginTitle : t.registerTitle}</h1>
           <p style={styles.sub}>{subtitle}</p>
 
           {error && (
             <div style={styles.errorBox}>
-              <div style={{ fontWeight: 950, marginBottom: 6 }}>Não foi possível continuar</div>
+              <div style={{ fontWeight: 950, marginBottom: 6 }}>{t.errorTitle}</div>
               <div style={{ fontWeight: 800, color: "#444", lineHeight: 1.5 }}>{error}</div>
             </div>
           )}
 
           <form onSubmit={handleSubmit} style={{ marginTop: 14, display: "grid", gap: 10 }}>
             <label style={styles.label}>
-              E-mail
+              {t.email}
               <input
                 value={email}
                 onChange={(ev) => setEmail(ev.target.value)}
                 type="email"
-                placeholder="seuemail@gmail.com"
+                placeholder={t.emailPlaceholder}
                 style={styles.input}
                 autoComplete="email"
               />
             </label>
 
             <label style={styles.label}>
-              Senha
+              {t.password}
               <input
                 value={password}
                 onChange={(ev) => setPassword(ev.target.value)}
                 type="password"
-                placeholder="••••••"
+                placeholder={t.passwordPlaceholder}
                 style={styles.input}
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
               />
@@ -230,12 +262,12 @@ export default function LoginPage() {
 
             {mode === "register" && (
               <label style={styles.label}>
-                Repetir senha
+                {t.repeatPassword}
                 <input
                   value={confirmPassword}
                   onChange={(ev) => setConfirmPassword(ev.target.value)}
                   type="password"
-                  placeholder="••••••"
+                  placeholder={t.passwordPlaceholder}
                   style={styles.input}
                   autoComplete="new-password"
                 />
@@ -243,7 +275,11 @@ export default function LoginPage() {
             )}
 
             <button type="submit" disabled={submitting} style={styles.btnPrimary}>
-              {submitting ? "Processando…" : mode === "login" ? "Entrar" : "Criar conta"}
+              {submitting
+                ? t.processing
+                : mode === "login"
+                  ? t.submitLogin
+                  : t.submitRegister}
             </button>
           </form>
 
@@ -258,24 +294,20 @@ export default function LoginPage() {
               }}
               style={styles.btnGhost}
             >
-              {mode === "login" ? "Não tenho cadastro" : "Já tenho conta"}
+              {mode === "login" ? t.noAccount : t.hasAccount}
             </button>
 
             <a href="/free" style={styles.btnGhostLink}>
-              Voltar pro calendário
+              {t.backCalendar}
             </a>
 
             <a href="/vip" style={styles.btnDarkLink}>
-              Ver VIP
+              {t.viewVip}
             </a>
 
             <button type="button" onClick={handleLogout} style={styles.btnNeutral}>
-              Sair (se logado)
+              {t.logout}
             </button>
-          </div>
-
-          <div style={styles.footerNote}>
-            Auth: Email/Senha habilitado • users/{`{uid}`} garantido • VIP não é sobrescrito no login.
           </div>
         </section>
       </div>
@@ -310,6 +342,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.92)",
   },
+  topRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
   badge: {
     display: "inline-flex",
     padding: "8px 12px",
@@ -319,6 +358,28 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 950,
     fontSize: 12,
     color: "#111",
+  },
+  languageGroup: {
+    display: "inline-flex",
+    gap: 6,
+    padding: 4,
+    borderRadius: 999,
+    border: "1px solid rgba(17,17,17,0.10)",
+    background: "#fff",
+  },
+  languageButton: {
+    border: "none",
+    borderRadius: 999,
+    background: "transparent",
+    color: "#111",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 950,
+    padding: "7px 10px",
+  },
+  languageButtonActive: {
+    background: "#111",
+    color: "#fff",
   },
   h1: {
     margin: "10px 0 6px",
@@ -404,12 +465,5 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 14,
     border: "1px solid rgba(239,68,68,0.30)",
     background: "rgba(239,68,68,0.08)",
-  },
-  footerNote: {
-    marginTop: 12,
-    fontSize: 12,
-    color: "#666",
-    fontWeight: 700,
-    lineHeight: 1.5,
   },
 };
