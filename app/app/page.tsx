@@ -5,10 +5,17 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
+import {
+  defaultLanguage,
+  isLanguage,
+  languages,
+  translations,
+  type Language,
+} from "@/lib/i18n";
 
 type UserProfile = {
   vip?: boolean;
-  vipUntil?: any; // Firestore Timestamp
+  vipUntil?: any;
 };
 
 function isVipFromProfile(data: UserProfile) {
@@ -25,12 +32,24 @@ function isVipFromProfile(data: UserProfile) {
 export default function AppPage() {
   const router = useRouter();
 
+  const [language, setLanguage] = useState<Language>(defaultLanguage);
+  const t = translations[language].member;
+
   const [loading, setLoading] = useState(true);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [email, setEmail] = useState<string | null>(null);
 
   const [vipLoading, setVipLoading] = useState(true);
   const [isVip, setIsVip] = useState(false);
+
+  useEffect(() => {
+    const savedLanguage = window.localStorage.getItem("barrigaseca-language");
+    if (isLanguage(savedLanguage)) setLanguage(savedLanguage);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("barrigaseca-language", language);
+  }, [language]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -63,7 +82,6 @@ export default function AppPage() {
         const data = (snap.exists() ? (snap.data() as UserProfile) : {}) ?? {};
         setIsVip(isVipFromProfile(data));
       } catch {
-        // Em caso de erro, não libera (segurança)
         if (cancelled) return;
         setIsVip(false);
       } finally {
@@ -79,16 +97,16 @@ export default function AppPage() {
   }, [authUser?.uid]);
 
   const vipLabel = useMemo(() => {
-    if (vipLoading) return "Validando…";
-    return isVip ? "VIP ativo" : "Grátis";
-  }, [vipLoading, isVip]);
+    if (vipLoading) return t.validating;
+    return isVip ? t.vipActive : t.free;
+  }, [vipLoading, isVip, t]);
 
   async function handleLogout() {
     await signOut(auth);
     router.push("/login");
   }
 
-  if (loading) return <main style={{ padding: 32, color: "#fff" }}>Carregando…</main>;
+  if (loading) return <main style={{ padding: 32, color: "#fff" }}>{t.loading}</main>;
 
   return (
     <main style={styles.page}>
@@ -97,10 +115,10 @@ export default function AppPage() {
       <section style={styles.card}>
         <header style={styles.header}>
           <div>
-            <div style={styles.kicker}>Barriga Seca • App</div>
-            <h1 style={styles.h1}>Área do Membro</h1>
+            <div style={styles.kicker}>{t.brand}</div>
+            <h1 style={styles.h1}>{t.title}</h1>
             <p style={styles.sub}>
-              Logado como: <strong style={{ color: "#fff" }}>{email ?? "usuário"}</strong>
+              {t.loggedAs}: <strong style={{ color: "#fff" }}>{email ?? t.userFallback}</strong>
             </p>
 
             <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -115,57 +133,64 @@ export default function AppPage() {
                   color: "#fff",
                 }}
               >
-                Status: {vipLabel}
+                {t.status}: {vipLabel}
               </span>
             </div>
+          </div>
+
+          <div style={styles.languageGroup} aria-label="Language">
+            {languages.map((item) => (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => setLanguage(item.code)}
+                style={{
+                  ...styles.languageButton,
+                  ...(language === item.code ? styles.languageButtonActive : null),
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         </header>
 
         <div style={styles.actions}>
-          {/* ✅ CTA principal direciona o VIP pro valor (30 dias) */}
           <a href="/free" style={isVip ? styles.btnPrimary : styles.btnGhost}>
-            {isVip ? "Calendário 30 dias (VIP)" : "Área grátis"}
+            {isVip ? t.calendarVip : t.freeArea}
           </a>
 
-          {/* Upsell só quando não for VIP */}
           {!isVip && (
             <a href="/vip" style={styles.btnPrimary}>
-              Conteúdo VIP
+              {t.vipContent}
             </a>
           )}
 
-          {/* Se for VIP, mantém gerenciamento */}
           {isVip && (
             <a href="/vip" style={styles.btnGhost}>
-              Gerenciar VIP
+              {t.manageVip}
             </a>
           )}
 
-          {/* ✅ BOTÃO NOVO */}
           <a href="/vip/progresso" style={styles.btnGhost}>
-            Progresso
+            {t.progress}
           </a>
 
           <a href="/vip/checklist" style={styles.btnGhost}>
-            Checklist
+            {t.checklist}
           </a>
 
           <a href="/vip/metas" style={styles.btnGhost}>
-            Metas
+            {t.goals}
           </a>
 
           <button onClick={handleLogout} style={styles.btnNeutral}>
-            Sair
+            {t.logout}
           </button>
         </div>
 
-        {/* Hint operacional curto */}
         <div style={{ marginTop: 14, fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.70)" }}>
-          {vipLoading
-            ? "Sincronizando acesso…"
-            : isVip
-              ? "Acesso VIP liberado. Use o calendário de 30 dias, checklist e metas."
-              : "Você está no modo grátis. Faça upgrade para liberar o calendário completo e recursos VIP."}
+          {vipLoading ? t.syncingAccess : isVip ? t.vipHint : t.freeHint}
         </div>
       </section>
     </main>
@@ -215,6 +240,28 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 950,
     fontSize: 12,
     color: "rgba(255,255,255,0.90)",
+  },
+  languageGroup: {
+    display: "inline-flex",
+    gap: 6,
+    padding: 4,
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.16)",
+    background: "rgba(255,255,255,0.06)",
+  },
+  languageButton: {
+    border: "none",
+    borderRadius: 999,
+    background: "transparent",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 950,
+    padding: "7px 10px",
+  },
+  languageButtonActive: {
+    background: "#fff",
+    color: "#111",
   },
   h1: {
     margin: "10px 0 6px",
