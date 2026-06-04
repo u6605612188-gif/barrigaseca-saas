@@ -20,6 +20,7 @@ import {
   translations,
   type Language,
 } from "@/lib/i18n";
+import { localizeDayPlan } from "@/lib/contentI18n";
 
 type DayDoc = {
   cycle?: number;
@@ -195,9 +196,9 @@ export default function FreePage() {
 
   const dayPlan: DayDoc | null = useMemo(() => {
     const fromFs = days.find((d) => d.day === selectedDay);
-    if (fromFs) return fromFs;
-    return fallback.find((d) => d.day === selectedDay) ?? null;
-  }, [days, fallback, selectedDay]);
+    const plan = fromFs ?? fallback.find((d) => d.day === selectedDay) ?? null;
+    return plan ? localizeDayPlan(plan, language) : null;
+  }, [days, fallback, selectedDay, language]);
 
   const isVipLocked = !vipActive && selectedDay > FREE_DAYS;
 
