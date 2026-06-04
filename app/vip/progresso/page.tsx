@@ -5,24 +5,30 @@ import { useRouter } from "next/navigation";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import {
+  defaultLanguage,
+  isLanguage,
+  languages,
+  translations,
+  type Language,
+} from "@/lib/i18n";
 
 type UserProfile = {
   vip?: boolean;
-  vipUntil?: any; // Firestore Timestamp
+  vipUntil?: any;
 };
 
 type DailyHabitsDoc = {
-  date: string; // YYYY-MM-DD
+  date: string;
   allDone?: boolean;
   items?: Record<string, boolean>;
 };
 
 type GoalsDoc = {
-  weekStartISO?: string; // segunda-feira
+  weekStartISO?: string;
   goalDays?: number;
   goalWaterLiters?: number;
   goalWorkouts?: number;
-
   doneDays?: string[];
   doneWorkouts?: number;
 };
@@ -40,8 +46,8 @@ function minusDays(date: Date, days: number) {
 }
 function startOfWeekMonday(date = new Date()) {
   const d = new Date(date);
-  const day = d.getDay(); // 0 dom, 1 seg...
-  const diff = (day === 0 ? -6 : 1) - day; // volta pra segunda
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
   return d;
@@ -62,17 +68,26 @@ function isVipFromProfile(data: UserProfile) {
 export default function ProgressoPage() {
   const router = useRouter();
 
+  const [language, setLanguage] = useState<Language>(defaultLanguage);
+  const t = translations[language].progressPage;
+
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-
   const [vipLoading, setVipLoading] = useState(true);
   const [isVip, setIsVip] = useState(false);
-
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-
   const [habitsMap, setHabitsMap] = useState<Map<string, DailyHabitsDoc>>(new Map());
   const [goals, setGoals] = useState<GoalsDoc | null>(null);
+
+  useEffect(() => {
+    const savedLanguage = window.localStorage.getItem("barrigaseca-language");
+    if (isLanguage(savedLanguage)) setLanguage(savedLanguage);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("barrigaseca-language", language);
+  }, [language]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -85,7 +100,6 @@ export default function ProgressoPage() {
     return () => unsub();
   }, [router]);
 
-  // Gate VIP + dados
   useEffect(() => {
     let cancelled = false;
 
@@ -98,10 +112,8 @@ export default function ProgressoPage() {
       setErr(null);
 
       try {
-        // VIP profile
         const profileRef = doc(db, "users", user.uid);
         const profileSnap = await getDoc(profileRef);
-
         const profile = (profileSnap.exists() ? (profileSnap.data() as UserProfile) : {}) ?? {};
         const vip = isVipFromProfile(profile);
 
@@ -115,7 +127,6 @@ export default function ProgressoPage() {
           return;
         }
 
-        // Habits
         const colHabits = collection(db, "users", user.uid, "habits");
         const habitsSnap = await getDocs(colHabits);
 
@@ -126,7 +137,6 @@ export default function ProgressoPage() {
           map.set(key, { ...data, date: key });
         }
 
-        // Goals
         const goalsRef = doc(db, "users", user.uid, "goals", "current");
         const goalsSnap = await getDoc(goalsRef);
         const goalsData = goalsSnap.exists() ? (goalsSnap.data() as GoalsDoc) : null;
@@ -138,7 +148,7 @@ export default function ProgressoPage() {
         setLoading(false);
       } catch (e: any) {
         if (cancelled) return;
-        setErr(e?.message ?? "Falha ao carregar progresso.");
+        setErr(e?.message ?? t.loadError);
         setVipLoading(false);
         setLoading(false);
       }
@@ -148,12 +158,11 @@ export default function ProgressoPage() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, user?.uid]);
+  }, [authReady, user?.uid, t.loadError]);
 
   const todayISO = useMemo(() => ymd(new Date()), []);
 
   const kpis = useMemo(() => {
-    // streak atual (até 60 dias)
     let cur = 0;
     let cursor = new Date();
     for (let i = 0; i < 60; i++) {
@@ -167,7 +176,6 @@ export default function ProgressoPage() {
       }
     }
 
-    // melhor streak (janela 180 dias)
     let best = 0;
     let run = 0;
     let scan = new Date();
@@ -183,7 +191,6 @@ export default function ProgressoPage() {
       scan = minusDays(scan, 1);
     }
 
-    // últimos 7 / 30 dias
     let done7 = 0;
     for (let i = 0; i < 7; i++) {
       const key = ymd(minusDays(new Date(), i));
@@ -198,7 +205,6 @@ export default function ProgressoPage() {
 
     const pct7 = Math.round((done7 / 7) * 100);
     const pct30 = Math.round((done30 / 30) * 100);
-
     const todayDone = habitsMap.get(todayISO)?.allDone === true;
 
     return {
@@ -218,22 +224,18 @@ export default function ProgressoPage() {
       : startOfWeekMonday(new Date());
 
     const weekStartISO = ymd(weekStart);
-
     const weekDays: string[] = [];
     for (let i = 0; i < 7; i++) {
       weekDays.push(ymd(minusDays(minusDays(new Date(weekStart), -i), 0)));
     }
 
-    // doneDays pode ter dados antigos, então filtramos pela semana
     const doneDays = Array.isArray(goals?.doneDays) ? goals!.doneDays : [];
     const start = weekDays[0];
     const end = weekDays[6];
     const doneInWeek = doneDays.filter((d) => d >= start && d <= end).length;
-
     const goalDays = clamp(Number(goals?.goalDays ?? 5), 1, 7);
     const goalWorkouts = clamp(Number(goals?.goalWorkouts ?? 4), 0, 14);
     const doneWorkouts = clamp(Number(goals?.doneWorkouts ?? 0), 0, 50);
-
     const pctDays = goalDays > 0 ? Math.round((doneInWeek / goalDays) * 100) : 0;
     const pctWorkouts = goalWorkouts > 0 ? Math.round((doneWorkouts / goalWorkouts) * 100) : 0;
 
@@ -244,30 +246,29 @@ export default function ProgressoPage() {
       goalWaterLiters: clamp(Number(goals?.goalWaterLiters ?? 2), 0.5, 10),
       doneInWeek,
       doneWorkouts,
-      pctDays: clamp(pctDays, 0, 999),
-      pctWorkouts: clamp(pctWorkouts, 0, 999),
       pctAvg: Math.round((clamp(pctDays, 0, 100) + clamp(pctWorkouts, 0, 100)) / 2),
     };
   }, [goals]);
 
   if (!authReady || vipLoading) {
-    return <main style={{ padding: 28 }}>Carregando…</main>;
+    return <main style={{ padding: 28 }}>{t.loading}</main>;
   }
 
   if (!user?.uid) {
-    return <main style={{ padding: 28 }}>Redirecionando…</main>;
+    return <main style={{ padding: 28 }}>{t.redirecting}</main>;
   }
 
   if (err) {
     return (
       <main style={{ padding: 28, maxWidth: 980, margin: "28px auto" }}>
         <section style={styles.card}>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>Erro no Progresso</h1>
+          <LanguageSwitcher language={language} onChange={setLanguage} />
+          <h1 style={{ margin: "12px 0 0", fontSize: 22, fontWeight: 950 }}>{t.errorTitle}</h1>
           <p style={{ marginTop: 10, color: "#555", fontWeight: 800, lineHeight: 1.55 }}>{err}</p>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="/app" style={styles.btnGhost}>Voltar</a>
-            <a href="/vip" style={styles.btnDark}>VIP</a>
+            <a href="/app" style={styles.btnGhost}>{t.back}</a>
+            <a href="/vip" style={styles.btnDark}>{t.vip}</a>
           </div>
         </section>
       </main>
@@ -278,14 +279,15 @@ export default function ProgressoPage() {
     return (
       <main style={{ padding: 28, maxWidth: 980, margin: "28px auto" }}>
         <section style={styles.lock}>
-          <div style={{ fontWeight: 950, fontSize: 16 }}>Progresso (VIP) 🔒</div>
+          <LanguageSwitcher language={language} onChange={setLanguage} />
+          <div style={{ marginTop: 12, fontWeight: 950, fontSize: 16 }}>{t.lockedTitle}</div>
           <p style={{ marginTop: 8, marginBottom: 0, color: "#444", fontWeight: 700, lineHeight: 1.5 }}>
-            Dashboard de evolução é exclusivo para VIP. Libera agora e acompanha a jornada com governança.
+            {t.lockedDesc}
           </p>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="/vip" style={styles.btnDark}>Virar VIP</a>
-            <a href="/free" style={styles.btnGhost}>Ver área grátis</a>
+            <a href="/vip" style={styles.btnDark}>{t.becomeVip}</a>
+            <a href="/free" style={styles.btnGhost}>{t.freeArea}</a>
           </div>
         </section>
       </main>
@@ -298,75 +300,97 @@ export default function ProgressoPage() {
 
       <div style={styles.shell}>
         <header style={styles.header}>
-          <div style={styles.badge}>VIP • Progresso</div>
-          <h1 style={styles.h1}>Dashboard do assinante</h1>
-          <p style={styles.sub}>
-            Visão executiva: consistência, streaks e performance semanal. Tudo em um lugar.
-          </p>
+          <div style={styles.topRow}>
+            <div style={styles.badge}>{t.brand}</div>
+            <LanguageSwitcher language={language} onChange={setLanguage} />
+          </div>
+          <h1 style={styles.h1}>{t.title}</h1>
+          <p style={styles.sub}>{t.subtitle}</p>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="/app" style={styles.btnGhost}>Voltar pro App</a>
-            <a href="/vip/checklist" style={styles.btnGhost}>Checklist</a>
-            <a href="/vip/metas" style={styles.btnGhost}>Metas</a>
+            <a href="/app" style={styles.btnGhost}>{t.backApp}</a>
+            <a href="/vip/checklist" style={styles.btnGhost}>{t.checklist}</a>
+            <a href="/vip/metas" style={styles.btnGhost}>{t.goals}</a>
           </div>
         </header>
 
         {loading ? (
           <section style={styles.card}>
-            <strong>Carregando indicadores…</strong>
+            <strong>{t.loadingIndicators}</strong>
           </section>
         ) : (
           <>
-            {/* KPIs */}
             <section style={styles.grid}>
-              <KpiCard title="Streak atual" value={`${kpis.streakAtual} dias`} hint="sequência em execução" />
-              <KpiCard title="Melhor streak" value={`${kpis.melhorStreak} dias`} hint="recorde histórico" />
-              <KpiCard title="Últimos 7 dias" value={`${kpis.done7}/7 (${kpis.pct7}%)`} hint="consistência recente" />
-              <KpiCard title="Últimos 30 dias" value={`${kpis.done30}/30 (${kpis.pct30}%)`} hint="visão mês" />
-              <KpiCard title="Hoje" value={kpis.todayDone ? "✅ concluído" : "⏳ pendente"} hint={todayISO} />
-              <KpiCard title="Semana" value={`${week.pctAvg}%`} hint={`início: ${week.weekStartISO}`} />
+              <KpiCard title={t.currentStreak} value={`${kpis.streakAtual} ${t.days}`} hint={t.executionSequence} />
+              <KpiCard title={t.bestStreak} value={`${kpis.melhorStreak} ${t.days}`} hint={t.historicRecord} />
+              <KpiCard title={t.last7} value={`${kpis.done7}/7 (${kpis.pct7}%)`} hint={t.recentConsistency} />
+              <KpiCard title={t.last30} value={`${kpis.done30}/30 (${kpis.pct30}%)`} hint={t.monthView} />
+              <KpiCard title={t.today} value={kpis.todayDone ? t.done : t.pending} hint={todayISO} />
+              <KpiCard title={t.week} value={`${week.pctAvg}%`} hint={`${t.start}: ${week.weekStartISO}`} />
             </section>
 
-            {/* Semana (metas) */}
             <section style={styles.card}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontWeight: 950, fontSize: 16 }}>Resumo da semana</div>
+                  <div style={{ fontWeight: 950, fontSize: 16 }}>{t.weekSummary}</div>
                   <div style={{ marginTop: 6, color: "#555", fontWeight: 800 }}>
-                    Semana iniciando em: <strong>{week.weekStartISO}</strong>
+                    {t.weekStarting}: <strong>{week.weekStartISO}</strong>
                   </div>
                 </div>
 
-                <a href="/vip/metas" style={styles.btnDark}>
-                  Ajustar metas
-                </a>
+                <a href="/vip/metas" style={styles.btnDark}>{t.adjustGoals}</a>
               </div>
 
               <div style={{ marginTop: 14, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <StatCard label="Dias executados" value={`${week.doneInWeek}/${week.goalDays}`} />
-                <StatCard label="Treinos" value={`${week.doneWorkouts}/${week.goalWorkouts}`} />
-                <StatCard label="Água (meta/dia)" value={`${week.goalWaterLiters} L`} />
+                <StatCard label={t.daysExecuted} value={`${week.doneInWeek}/${week.goalDays}`} />
+                <StatCard label={t.workouts} value={`${week.doneWorkouts}/${week.goalWorkouts}`} />
+                <StatCard label={t.waterGoal} value={`${week.goalWaterLiters} L`} />
               </div>
 
               <div style={{ marginTop: 12, fontSize: 12, color: "#666", fontWeight: 800, lineHeight: 1.5 }}>
-                Observação: “Dias executados” aqui vem das Metas (check-in semanal). “Concluído” diário vem do Checklist.
+                {t.note}
               </div>
             </section>
 
-            {/* Ações */}
             <section style={styles.card}>
-              <div style={{ fontWeight: 950, fontSize: 16 }}>Ações rápidas</div>
+              <div style={{ fontWeight: 950, fontSize: 16 }}>{t.quickActions}</div>
 
               <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <a href="/vip/checklist" style={styles.btnDark}>Abrir Checklist</a>
-                <a href="/vip/metas" style={styles.btnGhost}>Abrir Metas</a>
-                <a href="/free" style={styles.btnGhost}>Calendário (30 dias)</a>
+                <a href="/vip/checklist" style={styles.btnDark}>{t.openChecklist}</a>
+                <a href="/vip/metas" style={styles.btnGhost}>{t.openGoals}</a>
+                <a href="/free" style={styles.btnGhost}>{t.calendar}</a>
               </div>
             </section>
           </>
         )}
       </div>
     </main>
+  );
+}
+
+function LanguageSwitcher({
+  language,
+  onChange,
+}: {
+  language: Language;
+  onChange: (language: Language) => void;
+}) {
+  return (
+    <div style={styles.languageGroup} aria-label="Language">
+      {languages.map((item) => (
+        <button
+          key={item.code}
+          type="button"
+          onClick={() => onChange(item.code)}
+          style={{
+            ...styles.languageButton,
+            ...(language === item.code ? styles.languageButtonActive : null),
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -418,6 +442,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.92)",
   },
+  topRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
   badge: {
     display: "inline-flex",
     padding: "8px 12px",
@@ -427,6 +458,28 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 950,
     fontSize: 12,
     color: "#111",
+  },
+  languageGroup: {
+    display: "inline-flex",
+    gap: 6,
+    padding: 4,
+    borderRadius: 999,
+    border: "1px solid rgba(17,17,17,0.10)",
+    background: "#fff",
+  },
+  languageButton: {
+    border: "none",
+    borderRadius: 999,
+    background: "transparent",
+    color: "#111",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 950,
+    padding: "7px 10px",
+  },
+  languageButtonActive: {
+    background: "#111",
+    color: "#fff",
   },
   h1: {
     margin: "10px 0 6px",
