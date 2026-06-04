@@ -39,6 +39,8 @@ type AdminResponse = {
   error?: string;
 };
 
+type RecoveryType = "lead" | "expired" | "inactive" | "canceled";
+
 function formatDate(value: string | null) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("pt-BR", {
@@ -48,6 +50,37 @@ function formatDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function daysSince(value: string | null) {
+  if (!value) return null;
+  const ms = Date.now() - new Date(value).getTime();
+  return Math.floor(ms / 86400000);
+}
+
+function getRecoveryReasons(item: AdminUser): { type: RecoveryType; label: string; priority: number }[] {
+  const reasons: { type: RecoveryType; label: string; priority: number }[] = [];
+  const lastLoginDays = daysSince(item.lastLoginAt);
+  const vipUntilMs = item.vipUntil ? new Date(item.vipUntil).getTime() : null;
+  const status = (item.subscriptionStatus ?? "").toLowerCase();
+
+  if (!item.vipActive && item.unlockedCycles === 0) {
+    reasons.push({ type: "lead", label: "Lead gratis", priority: 3 });
+  }
+
+  if (!item.vipActive && typeof vipUntilMs === "number" && vipUntilMs < Date.now()) {
+    reasons.push({ type: "expired", label: "VIP vencido", priority: 1 });
+  }
+
+  if (["canceled", "cancelled", "inactive", "unpaid", "past_due"].includes(status)) {
+    reasons.push({ type: "canceled", label: "Assinatura em risco", priority: 1 });
+  }
+
+  if (typeof lastLoginDays === "number" && lastLoginDays >= 7) {
+    reasons.push({ type: "inactive", label: `${lastLoginDays} dias sem login`, priority: 2 });
+  }
+
+  return reasons.sort((a, b) => a.priority - b.priority);
 }
 
 export default function AdminPage() {
@@ -60,7 +93,8 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AdminResponse | null>(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "vip" | "free">("all");
+  const [filter, setFilter] = useState<"all" | "vip" | "free" | "recovery">("all");
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
   const isAdmin = (user?.email ?? "").toLowerCase() === ADMIN_EMAIL;
 
@@ -123,6 +157,7 @@ export default function AdminPage() {
     return base.filter((item) => {
       if (filter === "vip" && !item.vipActive) return false;
       if (filter === "free" && item.vipActive) return false;
+      if (filter === "recovery" && getRecoveryReasons(item).length === 0) return false;
       if (!q) return true;
       return (
         item.email?.toLowerCase().includes(q) ||
@@ -131,6 +166,40 @@ export default function AdminPage() {
       );
     });
   }, [data?.users, filter, query]);
+
+  const recoveryUsers = useMemo(() => {
+    return (data?.users ?? [])
+      .map((item) => ({ user: item, reasons: getRecoveryReasons(item) }))
+      .filter((item) => item.reasons.length > 0)
+      .sort((a, b) => a.reasons[0].priority - b.reasons[0].priority);
+  }, [data?.users]);
+
+  const recoverySummary = useMemo(() => {
+    const items = recoveryUsers;
+    return {
+      total: items.length,
+      leads: items.filter((item) => item.reasons.some((reason) => reason.type === "lead")).length,
+      expired: items.filter((item) => item.reasons.some((reason) => reason.type === "expired" || reason.type === "canceled")).length,
+      inactive: items.filter((item) => item.reasons.some((reason) => reason.type === "inactive")).length,
+    };
+  }, [recoveryUsers]);
+
+  async function copyText(text: string, message: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMsg(message);
+      window.setTimeout(() => setCopyMsg(null), 2200);
+    } catch {
+      setCopyMsg("Nao foi possivel copiar.");
+    }
+  }
+
+  async function copyRecoveryEmails() {
+    const emails = recoveryUsers
+      .map((item) => item.user.email)
+      .filter((value): value is string => Boolean(value));
+    await copyText([...new Set(emails)].join(", "), `${emails.length} e-mails copiados.`);
+  }
 
   if (!authReady) {
     return <main style={styles.page}>Carregando...</main>;
@@ -220,6 +289,58 @@ export default function AdminPage() {
           <Stat title="VIP" value={data?.summary.vip ?? 0} />
           <Stat title="Gratis" value={data?.summary.free ?? 0} />
           <Stat title="Stripe" value={data?.summary.withStripe ?? 0} />
+          <Stat title="Recuperar" value={recoverySummary.total} />
+        </section>
+
+        <section style={styles.recoveryPanel}>
+          <div style={styles.recoveryHeader}>
+            <div>
+              <div style={styles.sectionTitle}>Recuperacao e remarketing</div>
+              <div style={styles.sectionSub}>
+                Usuarios com chance de recuperacao: gratis, VIP vencido/cancelado ou sem login recente.
+              </div>
+            </div>
+            <button onClick={copyRecoveryEmails} style={styles.darkButton} type="button">
+              Copiar e-mails
+            </button>
+          </div>
+
+          <div style={styles.recoveryStats}>
+            <MiniStat title="Leads gratis" value={recoverySummary.leads} />
+            <MiniStat title="Vencidos/risco" value={recoverySummary.expired} />
+            <MiniStat title="Sem login" value={recoverySummary.inactive} />
+          </div>
+
+          {copyMsg && <div style={styles.copyMsg}>{copyMsg}</div>}
+
+          <div style={styles.recoveryList}>
+            {recoveryUsers.slice(0, 8).map(({ user: item, reasons }) => (
+              <div key={item.id} style={styles.recoveryItem}>
+                <div>
+                  <div style={styles.email}>{item.email ?? "Sem e-mail"}</div>
+                  <div style={styles.reasons}>
+                    {reasons.map((reason) => (
+                      <span key={`${item.id}-${reason.type}`} style={styles.reasonPill}>
+                        {reason.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => copyText(item.email ?? "", "E-mail copiado.")}
+                  disabled={!item.email}
+                  style={styles.ghostButton}
+                  type="button"
+                >
+                  Copiar
+                </button>
+              </div>
+            ))}
+
+            {recoveryUsers.length === 0 && (
+              <div style={styles.emptyLight}>Nenhuma oportunidade de recuperacao no momento.</div>
+            )}
+          </div>
         </section>
 
         <section style={styles.toolbar}>
@@ -231,7 +352,7 @@ export default function AdminPage() {
           />
 
           <div style={styles.segment}>
-            {(["all", "vip", "free"] as const).map((item) => (
+            {(["all", "vip", "free", "recovery"] as const).map((item) => (
               <button
                 key={item}
                 onClick={() => setFilter(item)}
@@ -241,7 +362,7 @@ export default function AdminPage() {
                 }}
                 type="button"
               >
-                {item === "all" ? "Todos" : item === "vip" ? "VIP" : "Gratis"}
+                {item === "all" ? "Todos" : item === "vip" ? "VIP" : item === "free" ? "Gratis" : "Recuperar"}
               </button>
             ))}
           </div>
@@ -273,6 +394,16 @@ export default function AdminPage() {
                   <div>Stripe subscription: {item.stripeSubscriptionId ?? "-"}</div>
                 </div>
               )}
+
+              {getRecoveryReasons(item).length > 0 && (
+                <div style={styles.reasons}>
+                  {getRecoveryReasons(item).map((reason) => (
+                    <span key={`${item.id}-${reason.type}`} style={styles.reasonPill}>
+                      {reason.label}
+                    </span>
+                  ))}
+                </div>
+              )}
             </article>
           ))}
 
@@ -290,6 +421,15 @@ function Stat({ title, value }: { title: string; value: number }) {
     <div style={styles.statCard}>
       <div style={styles.statTitle}>{title}</div>
       <div style={styles.statValue}>{value}</div>
+    </div>
+  );
+}
+
+function MiniStat({ title, value }: { title: string; value: number }) {
+  return (
+    <div style={styles.miniStat}>
+      <div style={styles.infoLabel}>{title}</div>
+      <div style={styles.miniStatValue}>{value}</div>
     </div>
   );
 }
@@ -416,6 +556,91 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gap: 12,
     gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  },
+  recoveryPanel: {
+    padding: 16,
+    borderRadius: 18,
+    background: "rgba(255,255,255,0.94)",
+    display: "grid",
+    gap: 12,
+  },
+  recoveryHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 950,
+  },
+  sectionSub: {
+    marginTop: 6,
+    color: "#555",
+    fontWeight: 700,
+    lineHeight: 1.5,
+  },
+  recoveryStats: {
+    display: "grid",
+    gap: 10,
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  },
+  miniStat: {
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid #eee",
+    background: "#fff",
+  },
+  miniStatValue: {
+    marginTop: 6,
+    fontSize: 22,
+    fontWeight: 950,
+  },
+  recoveryList: {
+    display: "grid",
+    gap: 10,
+  },
+  recoveryItem: {
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid #eee",
+    background: "#fff",
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  reasons: {
+    marginTop: 10,
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  reasonPill: {
+    padding: "7px 10px",
+    borderRadius: 999,
+    background: "rgba(245,158,11,0.12)",
+    border: "1px solid rgba(245,158,11,0.25)",
+    color: "#92400e",
+    fontSize: 12,
+    fontWeight: 950,
+  },
+  copyMsg: {
+    padding: 10,
+    borderRadius: 14,
+    background: "rgba(34,197,94,0.10)",
+    border: "1px solid rgba(34,197,94,0.22)",
+    color: "#166534",
+    fontWeight: 900,
+  },
+  emptyLight: {
+    padding: 12,
+    borderRadius: 14,
+    background: "#fff",
+    border: "1px solid #eee",
+    fontWeight: 900,
   },
   statCard: {
     padding: 16,
