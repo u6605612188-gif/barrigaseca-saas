@@ -1,5 +1,6 @@
 "use client";
 
+import MobileNav from "@/components/MobileNav";
 import React, { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
@@ -192,6 +193,7 @@ export default function AppPage() {
         <div style={{ marginTop: 14, fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.70)" }}>
           {vipLoading ? t.syncingAccess : isVip ? t.vipHint : t.freeHint}
         </div>
+        <MobileNav />
       </section>
     </main>
   );
@@ -316,3 +318,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
 };
+
+
+

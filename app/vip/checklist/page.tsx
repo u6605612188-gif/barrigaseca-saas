@@ -1,5 +1,6 @@
 "use client";
 
+import MobileNav from "@/components/MobileNav";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
@@ -505,6 +506,7 @@ export default function ChecklistPage() {
           </div>
         </div>
       </section>
+      <MobileNav active="checklist" />
     </main>
   );
 }
@@ -645,3 +647,6 @@ const btnGhost: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
 };
+
+
+

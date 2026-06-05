@@ -113,7 +113,8 @@ export default function LoginPage() {
         }
 
         setAuthedEmail(u.email ?? null);
-        router.replace("/app");
+        const nextPath = window.sessionStorage.getItem("barrigaseca-new-user") === "1" ? "/onboarding" : "/app";
+        router.replace(nextPath);
         return;
       }
 
@@ -156,6 +157,8 @@ export default function LoginPage() {
 
     try {
       setSubmitting(true);
+      const isRegister = mode === "register";
+      if (isRegister) window.sessionStorage.setItem("barrigaseca-new-user", "1");
 
       timeoutRef.current = window.setTimeout(() => {
         if (!mountedRef.current) return;
@@ -175,7 +178,7 @@ export default function LoginPage() {
 
       if (user) await ensureUserDoc(user);
 
-      router.replace("/app");
+      router.replace(isRegister ? "/onboarding" : "/app");
     } catch (e2) {
       const raw = formatErr(e2);
       setError(friendlyAuthError(raw, t.errors));
@@ -468,3 +471,4 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(239,68,68,0.08)",
   },
 };
+

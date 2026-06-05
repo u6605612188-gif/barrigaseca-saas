@@ -1,5 +1,6 @@
 "use client";
 
+import MobileNav from "@/components/MobileNav";
 import React, { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -444,6 +445,7 @@ export default function FreePage() {
           <a href="/vip/checklist" style={isMobile ? mobileLinkGhost : linkGhost}>{t.viewChecklist}</a>
         </div>
       </section>
+      <MobileNav active="calendar" />
     </main>
   );
 }
@@ -779,3 +781,6 @@ function Block({
     </div>
   );
 }
+
+
+

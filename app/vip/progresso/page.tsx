@@ -1,5 +1,6 @@
 "use client";
 
+import MobileNav from "@/components/MobileNav";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, type User } from "firebase/auth";
@@ -363,6 +364,7 @@ export default function ProgressoPage() {
             </section>
           </>
         )}
+        <MobileNav active="progress" />
       </div>
     </main>
   );
@@ -555,3 +557,6 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
   },
 };
+
+
+

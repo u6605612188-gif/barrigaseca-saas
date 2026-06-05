@@ -1,5 +1,6 @@
 "use client";
 
+import MobileNav from "@/components/MobileNav";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, type User } from "firebase/auth";
@@ -347,6 +348,7 @@ export default function MetasPage() {
             </section>
           </>
         )}
+        <MobileNav active="goals" />
       </div>
     </main>
   );
@@ -589,3 +591,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#111",
   },
 };
+
+
+
