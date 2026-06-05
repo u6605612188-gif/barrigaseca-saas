@@ -164,7 +164,21 @@ function buildCycleFallback(): DayDoc[] {
   return out;
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const update = () => setIsMobile(window.innerWidth < 760);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return isMobile;
+}
+
 export default function FreePage() {
+  const isMobile = useIsMobile();
   const [language, setLanguage] = useState<Language>(defaultLanguage);
   const t = translations[language].free;
 
@@ -273,10 +287,10 @@ export default function FreePage() {
   }, [authReady, uid, vipActive, unlockedCycles, t]);
 
   return (
-    <main style={{ padding: 28, maxWidth: 1100, margin: "28px auto" }}>
-      <section style={sectionCard}>
+    <main style={isMobile ? mobilePage : page}>
+      <section style={isMobile ? mobileSectionCard : sectionCard}>
         <div style={topRow}>
-          <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>
+          <h1 style={{ fontSize: isMobile ? 26 : 34, fontWeight: 900, margin: 0, lineHeight: 1.08 }}>
             {t.heroTitle} - {t.cycle} {FREE_CYCLE}
           </h1>
 
@@ -311,10 +325,10 @@ export default function FreePage() {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
-          <a href="/login" style={linkGhost}>{t.loginCreate}</a>
-          <a href="/vip" style={linkDark}>{t.becomeVip}</a>
-          <a href="/app" style={linkGhostStrong}>{t.openApp}</a>
+        <div style={isMobile ? mobileActionRow : actionRow}>
+          <a href="/login" style={isMobile ? mobileLinkGhost : linkGhost}>{t.loginCreate}</a>
+          <a href="/vip" style={isMobile ? mobileLinkDark : linkDark}>{t.becomeVip}</a>
+          <a href="/app" style={isMobile ? mobileLinkGhost : linkGhostStrong}>{t.openApp}</a>
         </div>
 
         <div style={{ marginTop: 18 }}>
@@ -347,11 +361,11 @@ export default function FreePage() {
         )}
       </section>
 
-      <section style={mainGrid}>
-        <div style={sectionCardSmall}>
+      <section style={isMobile ? mobileMainGrid : mainGrid}>
+        <div style={isMobile ? mobileSectionCardSmall : sectionCardSmall}>
           <h2 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>{t.selectDay}</h2>
 
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(5, 1fr)" }}>
+          <div style={isMobile ? mobileCalendarGrid : calendarGrid}>
             {Array.from({ length: DAYS_PER_CYCLE }).map((_, i) => {
               const d = i + 1;
               const locked = !vipActive && d > FREE_DAYS;
@@ -362,8 +376,9 @@ export default function FreePage() {
                   key={d}
                   onClick={() => setSelectedDay(d)}
                   style={{
-                    padding: "12px 0",
-                    borderRadius: 12,
+                    minHeight: isMobile ? 48 : undefined,
+                    padding: isMobile ? "10px 0" : "12px 0",
+                    borderRadius: isMobile ? 10 : 12,
                     border: active ? "2px solid #111" : "1px solid #e6e6e6",
                     cursor: "pointer",
                     fontWeight: 900,
@@ -387,13 +402,13 @@ export default function FreePage() {
           </div>
         </div>
 
-        <div style={sectionCardSmall}>
+        <div style={isMobile ? mobileSectionCardSmall : sectionCardSmall}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <h2 style={{ marginTop: 0, fontSize: 22, fontWeight: 900 }}>
+            <h2 style={{ marginTop: 0, fontSize: isMobile ? 20 : 22, fontWeight: 900, lineHeight: 1.15 }}>
               {t.day} {selectedDay} - {isVipLocked ? t.contentVip : t.contentUnlocked}
             </h2>
 
-            {isVipLocked && <a href="/vip" style={linkDark}>{t.unlockNow}</a>}
+            {isVipLocked && <a href="/vip" style={isMobile ? mobileLinkDark : linkDark}>{t.unlockNow}</a>}
           </div>
 
           {!dayPlan ? (
@@ -405,11 +420,11 @@ export default function FreePage() {
           )}
 
           {!isVipLocked && (
-            <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={() => setSelectedDay((d) => Math.max(1, d - 1))} style={navBtn}>
+            <div style={isMobile ? mobileNavRow : navRow}>
+              <button onClick={() => setSelectedDay((d) => Math.max(1, d - 1))} style={isMobile ? mobileNavBtn : navBtn}>
                 {"<"} {t.previousDay}
               </button>
-              <button onClick={() => setSelectedDay((d) => Math.min(DAYS_PER_CYCLE, d + 1))} style={navBtn}>
+              <button onClick={() => setSelectedDay((d) => Math.min(DAYS_PER_CYCLE, d + 1))} style={isMobile ? mobileNavBtn : navBtn}>
                 {t.nextDay} {">"}
               </button>
             </div>
@@ -417,16 +432,16 @@ export default function FreePage() {
         </div>
       </section>
 
-      <section style={{ ...sectionCard, marginTop: 18 }}>
+      <section style={{ ...(isMobile ? mobileSectionCard : sectionCard), marginTop: isMobile ? 12 : 18 }}>
         <h3 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>{t.finalTitle}</h3>
         <p style={{ color: "#555", marginTop: 8, lineHeight: 1.5 }}>
           {t.finalText} <strong>Checklist</strong> + <strong>{t.goalsTitle}</strong>.
         </p>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <a href="/vip" style={linkDark}>{t.becomeVip}</a>
-          <a href="/vip/metas" style={linkGhost}>{t.viewGoals}</a>
-          <a href="/vip/checklist" style={linkGhost}>{t.viewChecklist}</a>
+          <a href="/vip" style={isMobile ? mobileLinkDark : linkDark}>{t.becomeVip}</a>
+          <a href="/vip/metas" style={isMobile ? mobileLinkGhost : linkGhost}>{t.viewGoals}</a>
+          <a href="/vip/checklist" style={isMobile ? mobileLinkGhost : linkGhost}>{t.viewChecklist}</a>
         </div>
       </section>
     </main>
@@ -435,6 +450,18 @@ export default function FreePage() {
 
 type FreeTexts = (typeof translations)[Language]["free"];
 
+const page: React.CSSProperties = {
+  padding: 28,
+  maxWidth: 1100,
+  margin: "28px auto",
+};
+
+const mobilePage: React.CSSProperties = {
+  padding: 12,
+  maxWidth: 520,
+  margin: "12px auto",
+};
+
 const sectionCard: React.CSSProperties = {
   padding: 24,
   borderRadius: 18,
@@ -442,9 +469,23 @@ const sectionCard: React.CSSProperties = {
   background: "#fff",
 };
 
+const mobileSectionCard: React.CSSProperties = {
+  padding: 16,
+  borderRadius: 16,
+  border: "1px solid #eee",
+  background: "#fff",
+};
+
 const sectionCardSmall: React.CSSProperties = {
   padding: 16,
   borderRadius: 18,
+  border: "1px solid #eee",
+  background: "#fff",
+};
+
+const mobileSectionCardSmall: React.CSSProperties = {
+  padding: 14,
+  borderRadius: 16,
   border: "1px solid #eee",
   background: "#fff",
 };
@@ -496,6 +537,40 @@ const mainGrid: React.CSSProperties = {
   alignItems: "start",
 };
 
+const mobileMainGrid: React.CSSProperties = {
+  marginTop: 12,
+  display: "grid",
+  gap: 12,
+  gridTemplateColumns: "1fr",
+  alignItems: "start",
+};
+
+const calendarGrid: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+  gridTemplateColumns: "repeat(5, 1fr)",
+};
+
+const mobileCalendarGrid: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+};
+
+const actionRow: React.CSSProperties = {
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+  marginTop: 14,
+};
+
+const mobileActionRow: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "1fr",
+  marginTop: 14,
+};
+
 const linkGhost: React.CSSProperties = {
   padding: 12,
   borderRadius: 12,
@@ -507,6 +582,12 @@ const linkGhost: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+};
+
+const mobileLinkGhost: React.CSSProperties = {
+  ...linkGhost,
+  width: "100%",
+  minHeight: 46,
 };
 
 const linkGhostStrong: React.CSSProperties = {
@@ -527,6 +608,12 @@ const linkDark: React.CSSProperties = {
   justifyContent: "center",
 };
 
+const mobileLinkDark: React.CSSProperties = {
+  ...linkDark,
+  width: "100%",
+  minHeight: 46,
+};
+
 const navBtn: React.CSSProperties = {
   padding: 12,
   borderRadius: 12,
@@ -534,6 +621,26 @@ const navBtn: React.CSSProperties = {
   fontWeight: 900,
   cursor: "pointer",
   background: "#fff",
+};
+
+const navRow: React.CSSProperties = {
+  marginTop: 18,
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const mobileNavRow: React.CSSProperties = {
+  marginTop: 14,
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "1fr 1fr",
+};
+
+const mobileNavBtn: React.CSSProperties = {
+  ...navBtn,
+  minHeight: 44,
+  padding: "10px 8px",
 };
 
 const vipChip: React.CSSProperties = {
