@@ -49,12 +49,25 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://barrigaseca-saas.vercel.app"),
   openGraph: {
     title: "Barriga Seca | 30 dias de treinos e receitas",
-    description:
-      "Treinos rapidos + receitas do dia. Disciplina simples para resultados continuos.",
-    url: "https://barrigaseca-saas.vercel.app",
+    description: "Treinos rapidos + receitas do dia. Comece gratis.",
+    url: "https://barrigaseca-saas.vercel.app/free",
     siteName: "Barriga Seca",
     locale: "pt_BR",
     type: "website",
+    images: [
+      {
+        url: "/share-barriga-seca.png",
+        width: 1200,
+        height: 630,
+        alt: "Barriga Seca - comece gratis",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Barriga Seca | Comece gratis",
+    description: "30 dias de treinos e receitas.",
+    images: ["/share-barriga-seca.png"],
   },
   robots: {
     index: true,
