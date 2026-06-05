@@ -341,6 +341,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.92)",
+    color: "#111",
   },
   topRow: {
     display: "flex",

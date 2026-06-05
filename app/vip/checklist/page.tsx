@@ -552,6 +552,7 @@ const card: React.CSSProperties = {
   borderRadius: 18,
   border: "1px solid #eee",
   background: "#fff",
+  color: "#111",
 };
 
 const noticeBox: React.CSSProperties = {
@@ -603,6 +604,7 @@ const statCard: React.CSSProperties = {
   borderRadius: 16,
   border: "1px solid #eee",
   background: "#fff",
+  color: "#111",
 };
 
 const statLabel: React.CSSProperties = {

@@ -467,6 +467,7 @@ const sectionCard: React.CSSProperties = {
   borderRadius: 18,
   border: "1px solid #eee",
   background: "#fff",
+  color: "#111",
 };
 
 const mobileSectionCard: React.CSSProperties = {
@@ -474,6 +475,7 @@ const mobileSectionCard: React.CSSProperties = {
   borderRadius: 16,
   border: "1px solid #eee",
   background: "#fff",
+  color: "#111",
 };
 
 const sectionCardSmall: React.CSSProperties = {
@@ -481,6 +483,7 @@ const sectionCardSmall: React.CSSProperties = {
   borderRadius: 18,
   border: "1px solid #eee",
   background: "#fff",
+  color: "#111",
 };
 
 const mobileSectionCardSmall: React.CSSProperties = {
@@ -488,6 +491,7 @@ const mobileSectionCardSmall: React.CSSProperties = {
   borderRadius: 16,
   border: "1px solid #eee",
   background: "#fff",
+  color: "#111",
 };
 
 const topRow: React.CSSProperties = {
@@ -758,7 +762,7 @@ function Block({
   hideList?: boolean;
 }) {
   return (
-    <div style={{ padding: 14, borderRadius: 16, border: "1px solid #eee", background: "#fff" }}>
+    <div style={{ padding: 14, borderRadius: 16, border: "1px solid #eee", background: "#fff", color: "#111" }}>
       <h4 style={{ marginTop: 0, marginBottom: hideList ? 0 : 10, fontSize: 16, fontWeight: 900 }}>
         {title}
       </h4>

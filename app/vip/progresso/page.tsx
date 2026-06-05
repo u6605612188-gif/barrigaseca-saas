@@ -441,6 +441,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.92)",
+    color: "#111",
   },
   topRow: {
     display: "flex",
@@ -504,18 +505,21 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.92)",
+    color: "#111",
   },
   stat: {
     padding: 16,
     borderRadius: 18,
     border: "1px solid #eee",
     background: "#fff",
+    color: "#111",
   },
   card: {
     padding: 16,
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.92)",
+    color: "#111",
   },
   lock: {
     padding: 16,
@@ -524,6 +528,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(245,158,11,0.10)",
     maxWidth: 980,
     margin: "0 auto",
+    color: "#111",
   },
   btnDark: {
     padding: "12px 14px",
