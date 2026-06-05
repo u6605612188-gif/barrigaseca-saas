@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import PwaInstaller from "@/components/PwaInstaller";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,13 +21,26 @@ export const metadata: Metadata = {
     template: "%s | Barriga Seca",
   },
   description:
-    "Calendário de 30 dias com treinos rápidos e receitas simples para uma rotina saudável. Área grátis e plano VIP.",
+    "Calendario de 30 dias com treinos rapidos e receitas simples para uma rotina saudavel. Area gratis e plano VIP.",
   applicationName: "Barriga Seca",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/app-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/app-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/app-icon-192.png", sizes: "192x192", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Barriga Seca",
+    statusBarStyle: "black-translucent",
+  },
   keywords: [
-    "vida saudável",
+    "vida saudavel",
     "barriga seca",
     "treino em casa",
-    "receitas saudáveis",
+    "receitas saudaveis",
     "emagrecimento",
     "rotina fitness",
   ],
@@ -36,7 +50,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Barriga Seca | 30 dias de treinos e receitas",
     description:
-      "Treinos rápidos + receitas do dia. Disciplina simples para resultados contínuos.",
+      "Treinos rapidos + receitas do dia. Disciplina simples para resultados continuos.",
     url: "https://barrigaseca-saas.vercel.app",
     siteName: "Barriga Seca",
     locale: "pt_BR",
@@ -46,6 +60,10 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0b0b0f",
 };
 
 export default function RootLayout({
@@ -65,6 +83,7 @@ export default function RootLayout({
         }}
       >
         {children}
+        <PwaInstaller />
       </body>
     </html>
   );
