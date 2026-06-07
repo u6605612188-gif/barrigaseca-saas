@@ -59,6 +59,16 @@ service cloud.firestore {
       match /goals/{goalId} {
         allow read, create, update, delete: if owns(uid);
       }
+
+    }
+
+    match /users/{uid}/coinTransactions/{transactionId} {
+      allow read: if owns(uid);
+      allow write: if false;
+    }
+
+    match /users/{uid}/walletDaily/{dayId} {
+      allow read, write: if false;
     }
 
     // Eventos Stripe e demais colecoes administrativas sao somente servidor.

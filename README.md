@@ -34,3 +34,20 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Barriga Seca SaaS
+
+## Recompensas do AdMob
+
+O endpoint de verificacao pelo servidor esta em:
+
+`https://barrigaseca-saas.vercel.app/api/admob/reward`
+
+Antes de ativar anuncios reais:
+
+1. Crie o aplicativo Android e o bloco de anuncio recompensado no AdMob.
+2. Adicione `ADMOB_REWARDED_AD_UNIT_ID` nas variaveis de ambiente da Vercel.
+3. Configure a URL acima como callback de verificacao pelo servidor no AdMob.
+4. No Android, envie o UID do Firebase como `user_id` nas opcoes SSV do anuncio.
+
+Cada anuncio confirmado credita 10 moedas, com limite de 5 por dia. O saldo,
+o limite diario e o historico somente podem ser alterados pelo servidor.
