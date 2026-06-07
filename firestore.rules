@@ -1,8 +1,69 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function protectedUserFields() {
+      return [
+        "vip",
+        "vipActive",
+        "isVip",
+        "vip_enabled",
+        "vipUntil",
+        "vip_until",
+        "vipExpiresAt",
+        "vip_expires_at",
+        "subscriptionStatus",
+        "stripeCustomerId",
+        "stripeSubscriptionId",
+        "unlockedCycles",
+        "unlockedDays",
+        "coins"
+      ];
+    }
+
+    // Conteudo do calendario precisa funcionar antes e depois do login.
+    match /cycleDays/{dayId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if owns(uid);
+
+      allow create: if owns(uid)
+        && request.resource.data.uid == uid
+        && (!("vip" in request.resource.data) || request.resource.data.vip == false)
+        && (!("coins" in request.resource.data) || request.resource.data.coins == 0)
+        && (!("unlockedCycles" in request.resource.data)
+          || request.resource.data.unlockedCycles == 0);
+
+      allow update: if owns(uid)
+        && !request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasAny(protectedUserFields());
+
+      allow delete: if owns(uid);
+
+      match /habits/{habitId} {
+        allow read, create, update, delete: if owns(uid);
+      }
+
+      match /goals/{goalId} {
+        allow read, create, update, delete: if owns(uid);
+      }
+    }
+
+    // Eventos Stripe e demais colecoes administrativas sao somente servidor.
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

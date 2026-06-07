@@ -46,6 +46,15 @@
   //     ]
   //   },
   // ]
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "cycleDays",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cycle", "order": "ASCENDING" },
+        { "fieldPath": "day", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
