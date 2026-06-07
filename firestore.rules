@@ -71,6 +71,38 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /users/{uid}/measurements/{measurementId} {
+      allow read: if owns(uid);
+
+      allow create: if owns(uid)
+        && request.resource.data.keys().hasOnly([
+          "weightKg",
+          "waistCm",
+          "abdomenCm",
+          "hipCm",
+          "createdAt"
+        ])
+        && request.resource.data.weightKg is number
+        && request.resource.data.weightKg >= 25
+        && request.resource.data.weightKg <= 350
+        && request.resource.data.createdAt == request.time
+        && (!("waistCm" in request.resource.data)
+          || (request.resource.data.waistCm is number
+            && request.resource.data.waistCm >= 30
+            && request.resource.data.waistCm <= 250))
+        && (!("abdomenCm" in request.resource.data)
+          || (request.resource.data.abdomenCm is number
+            && request.resource.data.abdomenCm >= 30
+            && request.resource.data.abdomenCm <= 250))
+        && (!("hipCm" in request.resource.data)
+          || (request.resource.data.hipCm is number
+            && request.resource.data.hipCm >= 30
+            && request.resource.data.hipCm <= 250));
+
+      allow update: if false;
+      allow delete: if owns(uid);
+    }
+
     // Eventos Stripe e demais colecoes administrativas sao somente servidor.
     match /{document=**} {
       allow read, write: if false;
