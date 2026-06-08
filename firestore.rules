@@ -73,6 +73,32 @@ service cloud.firestore {
         allow read, create, update, delete: if owns(uid);
       }
 
+      match /dailyProgress/{dayId} {
+        allow read: if owns(uid);
+
+        allow create, update: if owns(uid)
+          && request.resource.data.keys().hasOnly([
+            "dateKey",
+            "waterDone",
+            "workoutDone",
+            "mealsDone",
+            "checkInDone",
+            "updatedAt"
+          ])
+          && request.resource.data.dateKey == dayId
+          && request.resource.data.updatedAt == request.time
+          && (!("waterDone" in request.resource.data)
+            || request.resource.data.waterDone is bool)
+          && (!("workoutDone" in request.resource.data)
+            || request.resource.data.workoutDone is bool)
+          && (!("mealsDone" in request.resource.data)
+            || request.resource.data.mealsDone is bool)
+          && (!("checkInDone" in request.resource.data)
+            || request.resource.data.checkInDone is bool);
+
+        allow delete: if owns(uid);
+      }
+
     }
 
     match /users/{uid}/coinTransactions/{transactionId} {
