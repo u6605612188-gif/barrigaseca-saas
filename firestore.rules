@@ -40,6 +40,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Configuracoes publicas do app, como versao minima obrigatoria.
+    match /appConfig/{configId} {
+      allow read: if configId == "android";
+      allow write: if false;
+    }
+
     match /users/{uid} {
       allow read: if owns(uid);
 
