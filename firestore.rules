@@ -10,6 +10,10 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function validLanguage(data) {
+      return !("language" in data) || data.language in ["pt", "en", "es"];
+    }
+
     function protectedUserFields() {
       return [
         "vip",
@@ -43,9 +47,11 @@ service cloud.firestore {
         && (!("vip" in request.resource.data) || request.resource.data.vip == false)
         && (!("coins" in request.resource.data) || request.resource.data.coins == 0)
         && (!("unlockedCycles" in request.resource.data)
-          || request.resource.data.unlockedCycles == 0);
+          || request.resource.data.unlockedCycles == 0)
+        && validLanguage(request.resource.data);
 
       allow update: if owns(uid)
+        && validLanguage(request.resource.data)
         && !request.resource.data.diff(resource.data)
           .affectedKeys()
           .hasAny(protectedUserFields());
