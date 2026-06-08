@@ -29,6 +29,7 @@ service cloud.firestore {
         "stripeSubscriptionId",
         "unlockedCycles",
         "unlockedDays",
+        "coinUnlockedDays",
         "coins"
       ];
     }

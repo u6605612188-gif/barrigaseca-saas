@@ -3,6 +3,9 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 
 const AD_REWARD_COINS = 10;
 const DAILY_AD_LIMIT = 5;
+const DAY_UNLOCK_COST = 30;
+const FREE_DAYS = 7;
+const MAX_CYCLE_DAY = 30;
 
 type AdRewardInput = {
   uid: string;
@@ -18,6 +21,14 @@ export type AdRewardResult = {
   balance: number;
   adsWatchedToday: number;
   dailyLimit: number;
+};
+
+export type DayUnlockResult = {
+  unlocked: boolean;
+  balance: number;
+  cost: number;
+  day: number;
+  unlockedDays: number[];
 };
 
 function utcDayKey(date: Date) {
@@ -121,6 +132,74 @@ export async function creditRewardedAd(
       balance: nextBalance,
       adsWatchedToday: nextCount,
       dailyLimit: DAILY_AD_LIMIT,
+    };
+  });
+}
+
+export async function spendCoinsForDayUnlock(
+  uid: string,
+  day: number
+): Promise<DayUnlockResult> {
+  if (!Number.isInteger(day) || day <= FREE_DAYS || day > MAX_CYCLE_DAY) {
+    throw new Error("Dia invalido para desbloqueio por moedas.");
+  }
+
+  const db = getAdminDb();
+  const userRef = db.collection("users").doc(uid);
+  const ledgerRef = userRef.collection("coinTransactions").doc(`unlock_day_${day}`);
+
+  return db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists) {
+      throw new Error("Usuario nao encontrado.");
+    }
+
+    const data = userSnap.data() ?? {};
+    const coins = Number(data.coins ?? 0);
+    const unlockedDays = Array.isArray(data.coinUnlockedDays)
+      ? data.coinUnlockedDays
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value))
+      : [];
+
+    if (unlockedDays.includes(day)) {
+      return {
+        unlocked: true,
+        balance: coins,
+        cost: 0,
+        day,
+        unlockedDays,
+      };
+    }
+
+    if (coins < DAY_UNLOCK_COST) {
+      throw new Error("Moedas insuficientes.");
+    }
+
+    const nextBalance = coins - DAY_UNLOCK_COST;
+    const nextUnlockedDays = [...unlockedDays, day].sort((a, b) => a - b);
+
+    tx.update(userRef, {
+      coins: nextBalance,
+      coinUnlockedDays: nextUnlockedDays,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    tx.create(ledgerRef, {
+      type: "day_unlock",
+      amount: -DAY_UNLOCK_COST,
+      balanceAfter: nextBalance,
+      description: `Desbloqueio do dia ${day}`,
+      day,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      unlocked: true,
+      balance: nextBalance,
+      cost: DAY_UNLOCK_COST,
+      day,
+      unlockedDays: nextUnlockedDays,
     };
   });
 }

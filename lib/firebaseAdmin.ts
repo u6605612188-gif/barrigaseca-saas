@@ -37,3 +37,7 @@ export function getAdminApp() {
 export function getAdminDb() {
   return getAdminApp().firestore();
 }
+
+export function getAdminAuth() {
+  return getAdminApp().auth();
+}
