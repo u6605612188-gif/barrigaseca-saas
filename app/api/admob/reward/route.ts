@@ -87,7 +87,12 @@ export async function GET(request: Request) {
     }
 
     if (!(await verifyAdMobSignature(url))) {
-      return NextResponse.json({ error: "Assinatura invalida." }, { status: 401 });
+      return NextResponse.json({
+        ok: true,
+        credited: false,
+        mode: "validation",
+        error: "Assinatura invalida.",
+      });
     }
 
     const uid = url.searchParams.get("user_id")?.trim();
@@ -98,10 +103,12 @@ export async function GET(request: Request) {
     const timestampMs = Number(url.searchParams.get("timestamp") ?? Date.now());
 
     if (!uid || !transactionId || !adUnit || !Number.isFinite(timestampMs)) {
-      return NextResponse.json(
-        { error: "Parametros obrigatorios ausentes." },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        ok: true,
+        credited: false,
+        mode: "validation",
+        error: "Parametros obrigatorios ausentes.",
+      });
     }
 
     const expectedAdUnit = process.env.ADMOB_REWARDED_AD_UNIT_ID?.trim();
@@ -109,7 +116,11 @@ export async function GET(request: Request) {
       throw new Error("ENV ausente: ADMOB_REWARDED_AD_UNIT_ID");
     }
     if (adUnit !== expectedAdUnit) {
-      return NextResponse.json({ error: "Bloco de anuncio invalido." }, { status: 403 });
+      return NextResponse.json({
+        ok: true,
+        credited: false,
+        error: "Bloco de anuncio invalido.",
+      });
     }
 
     const result = await creditRewardedAd({
