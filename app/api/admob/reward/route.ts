@@ -77,6 +77,15 @@ async function verifyAdMobSignature(url: URL) {
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    const hasSignatureParams =
+      url.searchParams.has("signature") || url.searchParams.has("key_id");
+    const hasRewardParams =
+      url.searchParams.has("transaction_id") || url.searchParams.has("ad_unit");
+
+    if (!hasSignatureParams && !hasRewardParams) {
+      return NextResponse.json({ ok: true, mode: "validation" });
+    }
+
     if (!(await verifyAdMobSignature(url))) {
       return NextResponse.json({ error: "Assinatura invalida." }, { status: 401 });
     }
@@ -113,9 +122,10 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro ao processar recompensa.";
     return NextResponse.json(
-      { error: error?.message ?? "Erro ao processar recompensa." },
+      { error: message },
       { status: 500 }
     );
   }
