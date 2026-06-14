@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 
 export const metadata = {
   title: "Privacidade e exclusao de conta",
@@ -40,6 +40,19 @@ export default function PrivacidadePage() {
           Os dados sao usados para manter o acesso ao app, salvar seu acompanhamento, liberar recursos pagos
           ou gratuitos, oferecer suporte e melhorar a experiencia. O app nao promete resultado medico ou
           emagrecimento garantido.
+        </p>
+      </section>
+
+      <section style={styles.card}>
+        <h2 style={styles.h2}>Anuncios e AdMob</h2>
+        <p style={styles.text}>
+          O Barriga Seca pode exibir anuncios premiados por meio do Google AdMob. Esses anuncios podem usar
+          identificadores do dispositivo, como o ID de publicidade, para medir desempenho, prevenir fraude,
+          limitar abusos e entregar recompensas dentro do app quando aplicavel.
+        </p>
+        <p style={styles.text}>
+          A declaracao app-ads.txt do AdMob pode ser consultada em {" "}
+          <a href="/app-ads.txt" style={styles.link}>/app-ads.txt</a>.
         </p>
       </section>
 
@@ -124,3 +137,4 @@ const styles: Record<string, React.CSSProperties> = {
   },
   link: { color: "#111", fontWeight: 950 },
 };
+
