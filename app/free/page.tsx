@@ -2,785 +2,472 @@
 
 import MobileNav from "@/components/MobileNav";
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import {
   collection,
+  doc,
+  documentId,
+  getDoc,
   getDocs,
-  orderBy,
   query,
   where,
-  doc,
-  getDoc,
-  Timestamp,
 } from "firebase/firestore";
-import {
-  defaultLanguage,
-  isLanguage,
-  languages,
-  translations,
-  type Language,
-} from "@/lib/i18n";
-import { localizeDayPlan } from "@/lib/contentI18n";
 
-type DayDoc = {
-  cycle?: number;
+/* ============ Tipos ============ */
+type LangMap = Record<string, string>;
+type ListMap = Record<string, string[]>;
+
+type PlanDay = {
   day: number;
-  isVip?: boolean;
-  title: string;
-  workout?: string[];
-  meals: {
-    cafe: string[];
-    almoco: string[];
-    lanche: string[];
-    besteirinhas: string[];
-    janta: string[];
-  };
-  tips?: string[];
+  isVip: boolean;
+  workout: ListMap;
+  tips: ListMap;
+  meals: Record<string, string>;
+  summary: Record<string, LangMap>;
 };
 
-type UserProfile = {
-  createdAt?: any;
-  unlockedCycles?: number;
-  vip?: boolean;
-  vipActive?: boolean;
-  isVip?: boolean;
-  vip_enabled?: boolean;
-  subscriptionStatus?: string;
-  vipUntil?: any;
-  vip_until?: any;
-  vipExpiresAt?: any;
-  vip_expires_at?: any;
+type Recipe = {
+  id: string;
+  mealType: string;
+  timeMin: number;
+  kcal: number;
+  title: LangMap;
+  ingredients: ListMap;
+  steps: ListMap;
 };
 
+/* ============ Idioma / textos ============ */
+type Lang = "pt" | "en" | "es";
+const SLOTS = ["cafe", "almoco", "lanche", "besteirinhas", "janta"] as const;
 const FREE_DAYS = 7;
-const CYCLE_COLLECTION = "cycleDays";
-const FREE_CYCLE = 1;
-const DAYS_PER_CYCLE = 30;
+const TOTAL_DAYS = 365;
 
-function asMillis(v: any): number | null {
-  if (!v) return null;
-  if (v instanceof Timestamp) return v.toMillis();
-  if (typeof v?.seconds === "number") return v.seconds * 1000;
-  if (typeof v === "number") return v;
-  if (typeof v === "string") {
-    const t = Date.parse(v);
-    return Number.isNaN(t) ? null : t;
-  }
-  return null;
-}
+const pick = (m: LangMap | undefined, lang: Lang) => m?.[lang] ?? m?.pt ?? "";
+const pickList = (m: ListMap | undefined, lang: Lang) => m?.[lang] ?? m?.pt ?? [];
 
-function diffDaysUtc(fromMs: number, toMs: number): number {
-  const a = new Date(fromMs);
-  const b = new Date(toMs);
-  const aUtc = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
-  const bUtc = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
-  return Math.floor((bUtc - aUtc) / 86400000);
-}
+const UI: Record<Lang, Record<string, string>> = {
+  pt: {
+    today: "Plano de Hoje", sub: "Treino e refeições do dia", day: "Dia", of: "de", month: "Mês",
+    workout: "Treino do dia", ingredients: "Ingredientes", steps: "Modo de preparo",
+    free: "GRÁTIS", prev: "Anterior", next: "Próximo", loading: "Carregando...",
+    freeTitle: "Você está no plano grátis",
+    freeText: "As receitas completas, com ingredientes e passo a passo, ficam no VIP.",
+    seeVip: "Ver plano completo (VIP)", unlockAll: "Assinar VIP e liberar tudo",
+    lockedDay: "Dia %d é exclusivo do VIP", seeFull: "Ver receita completa no VIP",
+    tips: "Dicas do dia", tipsLocked: "As dicas que aceleram o resultado ficam no VIP.",
+    social: "Milhares de pessoas já seguem o plano completo.",
+    benefits1: "Todos os 365 dias, treinos e receitas liberados",
+    benefits2: "Ingredientes, quantidades e passo a passo",
+    benefits3: "Sem limites",
+    errLoad: "Não foi possível carregar o plano.",
+  },
+  en: {
+    today: "Today's Plan", sub: "Today's workout and meals", day: "Day", of: "of", month: "Month",
+    workout: "Today's workout", ingredients: "Ingredients", steps: "Steps",
+    free: "FREE", prev: "Previous", next: "Next", loading: "Loading...",
+    freeTitle: "You are on the free plan",
+    freeText: "Full recipes, with ingredients and step by step, are on VIP.",
+    seeVip: "See the full plan (VIP)", unlockAll: "Subscribe to VIP and unlock everything",
+    lockedDay: "Day %d is VIP only", seeFull: "See the full recipe on VIP",
+    tips: "Daily tips", tipsLocked: "The tips that speed up results are on VIP.",
+    social: "Thousands already follow the full plan.",
+    benefits1: "All 365 days, workouts and recipes unlocked",
+    benefits2: "Ingredients, amounts and step by step",
+    benefits3: "No limits",
+    errLoad: "Could not load the plan.",
+  },
+  es: {
+    today: "Plan de hoy", sub: "Entrenamiento y comidas del día", day: "Día", of: "de", month: "Mes",
+    workout: "Entrenamiento del día", ingredients: "Ingredientes", steps: "Preparación",
+    free: "GRATIS", prev: "Anterior", next: "Siguiente", loading: "Cargando...",
+    freeTitle: "Estás en el plan gratis",
+    freeText: "Las recetas completas, con ingredientes y paso a paso, están en VIP.",
+    seeVip: "Ver el plan completo (VIP)", unlockAll: "Suscribirse a VIP y desbloquear todo",
+    lockedDay: "El día %d es solo VIP", seeFull: "Ver la receta completa en VIP",
+    tips: "Consejos del día", tipsLocked: "Los consejos que aceleran el resultado están en VIP.",
+    social: "Miles ya siguen el plan completo.",
+    benefits1: "Los 365 días, entrenamientos y recetas desbloqueados",
+    benefits2: "Ingredientes, cantidades y paso a paso",
+    benefits3: "Sin límites",
+    errLoad: "No se pudo cargar el plan.",
+  },
+};
 
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
-}
+const MEAL_LABEL: Record<string, Record<Lang, string>> = {
+  cafe: { pt: "Café da manhã", en: "Breakfast", es: "Desayuno" },
+  almoco: { pt: "Almoço", en: "Lunch", es: "Almuerzo" },
+  lanche: { pt: "Lanche", en: "Snack", es: "Merienda" },
+  besteirinhas: { pt: "Besteirinha controlada", en: "Controlled treat", es: "Antojo controlado" },
+  janta: { pt: "Jantar", en: "Dinner", es: "Cena" },
+};
 
-function resolveUnlockedCycles(data: UserProfile): number {
-  const direct = Number(data?.unlockedCycles);
-  if (Number.isFinite(direct) && direct > 0) return direct;
-
-  const flag =
-    data?.vipActive === true ||
-    data?.isVip === true ||
-    data?.vip === true ||
-    data?.vip_enabled === true;
-
-  const statusOk =
-    typeof data?.subscriptionStatus === "string" &&
-    ["active", "trialing", "paid"].includes(String(data.subscriptionStatus).toLowerCase());
-
-  const until =
-    data?.vipUntil ?? data?.vip_until ?? data?.vipExpiresAt ?? data?.vip_expires_at;
-  const untilMs = asMillis(until);
-  const untilOk = typeof untilMs === "number" ? untilMs > Date.now() : false;
-
-  return flag || statusOk || untilOk ? 1 : 0;
-}
-
-function buildCycleFallback(): DayDoc[] {
-  const out: DayDoc[] = [];
-  const workouts = [
-    ["Agachamento 3x12", "Polichinelo 3x30s", "Prancha 3x30s", "Alongamento 2 min"],
-    ["Caminhada 15 min", "Abdominal 3x15", "Prancha lateral 3x20s", "Alongamento 2 min"],
-    ["Afundo 3x10 (cada perna)", "Elevacao pelvica 3x12", "Prancha 3x40s", "Alongamento 2 min"],
-    ["HIIT leve 10 min", "Agachamento 4x10", "Abdominal curto 3x12", "Alongamento 2 min"],
-  ];
-
-  const cafe = [
-    "Omelete de queijo + tomate (10min)",
-    "Crepioca de frango (10min)",
-    "Iogurte natural + granola + fruta",
-    "Panqueca de banana (12min)",
-  ];
-  const almoco = [
-    "Frango ao molho + legumes (20min)",
-    "Tilapia assada + pure (25min)",
-    "Carne moida com abobrinha + arroz (25min)",
-    "Salada completa + proteina (15min)",
-  ];
-  const lanche = [
-    "Iogurte + fruta + castanhas (porcao)",
-    "Sanduiche integral pequeno (queijo + tomate)",
-    "Ovo cozido + fruta",
-    "Mix de castanhas (30g)",
-  ];
-  const besteirinhas = [
-    "Gelatina zero + cha",
-    "Chocolate 70% (1-2 quadradinhos)",
-    "Pipoca sem oleo (porcao pequena)",
-    "Banana com canela (airfryer 8min)",
-  ];
-  const janta = [
-    "Sopa de legumes + frango (25min)",
-    "Omelete + salada (15min)",
-    "Salada + atum (10min)",
-    "Wrap integral de frango + salada",
-  ];
-
-  for (let day = 1; day <= DAYS_PER_CYCLE; day++) {
-    out.push({
-      cycle: FREE_CYCLE,
-      day,
-      isVip: day > FREE_DAYS,
-      title: `Dia ${day} - Ciclo ${FREE_CYCLE}`,
-      workout: workouts[(day - 1) % workouts.length],
-      meals: {
-        cafe: [cafe[(day - 1) % cafe.length]],
-        almoco: [almoco[(day - 1) % almoco.length]],
-        lanche: [lanche[(day - 1) % lanche.length]],
-        besteirinhas: [besteirinhas[(day - 1) % besteirinhas.length]],
-        janta: [janta[(day - 1) % janta.length]],
-      },
-      tips: ["Meta do dia: agua + consistencia.", "Caminhada leve pos-refeicao se possivel."],
-    });
-  }
-
-  return out;
-}
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const update = () => setIsMobile(window.innerWidth < 760);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  return isMobile;
-}
-
+/* ============ Página ============ */
 export default function FreePage() {
-  const isMobile = useIsMobile();
-  const [language, setLanguage] = useState<Language>(defaultLanguage);
-  const t = translations[language].free;
+  const router = useRouter();
+  const [lang, setLang] = useState<Lang>("pt");
+  const t = UI[lang];
 
-  const [selectedDay, setSelectedDay] = useState<number>(1);
   const [authReady, setAuthReady] = useState(false);
-  const [uid, setUid] = useState<string | null>(null);
-  const [unlockedCycles, setUnlockedCycles] = useState<number>(0);
-  const vipActive = unlockedCycles >= 1;
-  const [startAtMs, setStartAtMs] = useState<number | null>(null);
-  const [days, setDays] = useState<DayDoc[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isVip, setIsVip] = useState(false);
 
-  const fallback = useMemo(() => buildCycleFallback(), []);
+  const [days, setDays] = useState<PlanDay[]>([]);
+  const [selectedDay, setSelectedDay] = useState(1);
+  const [recipes, setRecipes] = useState<Record<string, Recipe>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const savedLanguage = window.localStorage.getItem("barrigaseca-language");
-    if (isLanguage(savedLanguage)) setLanguage(savedLanguage);
+    const saved = window.localStorage.getItem("barrigaseca-language");
+    if (saved === "pt" || saved === "en" || saved === "es") setLang(saved);
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("barrigaseca-language", language);
-  }, [language]);
-
-  const todayProgramDay = useMemo(() => {
-    if (!startAtMs) return null;
-    const elapsed = diffDaysUtc(startAtMs, Date.now()) + 1;
-    return clamp(elapsed, 1, DAYS_PER_CYCLE);
-  }, [startAtMs]);
-
-  const dayPlan: DayDoc | null = useMemo(() => {
-    const fromFs = days.find((d) => d.day === selectedDay);
-    const plan = fromFs ?? fallback.find((d) => d.day === selectedDay) ?? null;
-    return plan ? localizeDayPlan(plan, language) : null;
-  }, [days, fallback, selectedDay, language]);
-
-  const isVipLocked = !vipActive && selectedDay > FREE_DAYS;
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUid(u?.uid ?? null);
-      setAuthReady(true);
-
-      if (!u?.uid) {
-        setUnlockedCycles(0);
-        setStartAtMs(null);
+    const unsub = onAuthStateChanged(auth, async (user: User | null) => {
+      if (!user) {
+        router.push("/login");
         return;
       }
-
       try {
-        const userRef = doc(db, "users", u.uid);
-        const snap = await getDoc(userRef);
-
-        if (!snap.exists()) {
-          setUnlockedCycles(0);
-          setStartAtMs(null);
-          return;
-        }
-
-        const data = (snap.data() as UserProfile) ?? {};
-        setUnlockedCycles(resolveUnlockedCycles(data));
-
-        const createdMs = asMillis(data.createdAt);
-        setStartAtMs(createdMs);
-
-        if (createdMs) {
-          const d = clamp(diffDaysUtc(createdMs, Date.now()) + 1, 1, DAYS_PER_CYCLE);
-          setSelectedDay(d);
-        }
+        const snap = await getDoc(doc(db, "users", user.uid));
+        const data = snap.data() as
+          | { vip?: boolean; vipUntil?: { seconds?: number }; isVip?: boolean; vipActive?: boolean }
+          | undefined;
+        const until = data?.vipUntil?.seconds ? data.vipUntil.seconds * 1000 > Date.now() : false;
+        setIsVip(Boolean(data?.vip || data?.isVip || data?.vipActive || until));
       } catch {
-        setUnlockedCycles(0);
-        setStartAtMs(null);
+        setIsVip(false);
       }
+      setAuthReady(true);
     });
-
     return () => unsub();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    async function loadFromFirestore() {
+    let alive = true;
+    (async () => {
       try {
-        setLoading(true);
-        const ref = collection(db, CYCLE_COLLECTION);
-        const q = query(ref, where("cycle", "==", FREE_CYCLE), orderBy("day", "asc"));
-        const snap = await getDocs(q);
-        const list = snap.docs.map((d) => d.data() as DayDoc).filter(Boolean);
-        setDays(list);
-
-        if (list.length > 0 && !list.some((x) => x.day === selectedDay)) {
-          setSelectedDay(list[0]?.day ?? 1);
+        const snap = await getDocs(collection(db, "planCalendar"));
+        const list: PlanDay[] = snap.docs
+          .map((d) => {
+            const x = d.data() as Record<string, unknown>;
+            return {
+              day: Number(x.day ?? 0),
+              isVip: Boolean(x.isVip ?? Number(x.day) > FREE_DAYS),
+              workout: (x.workout as ListMap) ?? {},
+              tips: (x.tips as ListMap) ?? {},
+              meals: (x.meals as Record<string, string>) ?? {},
+              summary: (x.summary as Record<string, LangMap>) ?? {},
+            };
+          })
+          .filter((d) => d.day > 0)
+          .sort((a, b) => a.day - b.day);
+        if (alive) {
+          setDays(list);
+          setLoading(false);
         }
       } catch {
-        setDays([]);
-      } finally {
-        setLoading(false);
+        if (alive) {
+          setError(t.errLoad);
+          setLoading(false);
+        }
       }
-    }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [t.errLoad]);
 
-    loadFromFirestore();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const plan = useMemo(() => days.find((d) => d.day === selectedDay), [days, selectedDay]);
+  const lockedDay = !isVip && selectedDay > FREE_DAYS;
+  const premiumLocked = !isVip;
 
-  const headerStatus = useMemo(() => {
-    if (!authReady) return t.syncing;
-    if (!uid) return t.visitor;
-    return vipActive ? `${t.vipCycles}: ${unlockedCycles}` : t.freeStatus;
-  }, [authReady, uid, vipActive, unlockedCycles, t]);
+  useEffect(() => {
+    if (!isVip || !plan) return;
+    let alive = true;
+    (async () => {
+      const ids = SLOTS.map((s) => plan.meals[s]).filter(Boolean);
+      if (ids.length === 0) return;
+      try {
+        const snap = await getDocs(
+          query(collection(db, "recipesLibrary"), where(documentId(), "in", ids))
+        );
+        const map: Record<string, Recipe> = {};
+        snap.docs.forEach((d) => {
+          const x = d.data() as Record<string, unknown>;
+          map[d.id] = {
+            id: d.id,
+            mealType: String(x.mealType ?? ""),
+            timeMin: Number(x.timeMin ?? 0),
+            kcal: Number(x.kcal ?? 0),
+            title: (x.title as LangMap) ?? {},
+            ingredients: (x.ingredients as ListMap) ?? {},
+            steps: (x.steps as ListMap) ?? {},
+          };
+        });
+        if (alive) setRecipes((prev) => ({ ...prev, ...map }));
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isVip, plan]);
+
+  if (!authReady) {
+    return (
+      <main style={S.page}>
+        <div style={S.center}>{t.loading}</div>
+      </main>
+    );
+  }
 
   return (
-    <main style={isMobile ? mobilePage : page}>
-      <section style={isMobile ? mobileSectionCard : sectionCard}>
-        <div style={topRow}>
-          <h1 style={{ fontSize: isMobile ? 26 : 34, fontWeight: 900, margin: 0, lineHeight: 1.08 }}>
-            {t.heroTitle} - {t.cycle} {FREE_CYCLE}
-          </h1>
-
-          <div style={languageGroup} aria-label="Language">
-            {languages.map((item) => (
-              <button
-                key={item.code}
-                type="button"
-                onClick={() => setLanguage(item.code)}
-                style={{
-                  ...languageButton,
-                  ...(language === item.code ? languageButtonActive : null),
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <p style={{ color: "#555", marginTop: 10, lineHeight: 1.5 }}>
-          {t.heroTextStart} <strong>{t.workout}</strong> + <strong>{t.recipes}</strong>.{" "}
-          <strong>{FREE_DAYS} {t.heroTextEnd}</strong>
-        </p>
-
-        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 900, color: "#111" }}>
-          {t.status}: {headerStatus}
-          {uid && typeof todayProgramDay === "number" && (
-            <span style={{ marginLeft: 10, color: "#555" }}>
-              - {t.todayProgram}: {t.day} {todayProgramDay}
-            </span>
-          )}
-        </div>
-
-        <div style={isMobile ? mobileActionRow : actionRow}>
-          <a href="/login" style={isMobile ? mobileLinkGhost : linkGhost}>{t.loginCreate}</a>
-          <a href="/vip" style={isMobile ? mobileLinkDark : linkDark}>{t.becomeVip}</a>
-          <a href="/app" style={isMobile ? mobileLinkGhost : linkGhostStrong}>{t.openApp}</a>
-        </div>
-
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 14, fontWeight: 950, color: "#111", marginBottom: 10 }}>
-            {t.vipArea}
-          </div>
-
-          <div style={featureGrid}>
-            <VipFeatureCard
-              title={t.checklistTitle}
-              desc={t.checklistDesc}
-              href="/vip/checklist"
-              badge={t.vipLabel}
-              openLabel={t.open}
-            />
-            <VipFeatureCard
-              title={t.goalsTitle}
-              desc={t.goalsDesc}
-              href="/vip/metas"
-              badge={t.vipLabel}
-              openLabel={t.open}
-            />
-          </div>
-        </div>
-
-        {loading && (
-          <div style={{ marginTop: 12, color: "#666", fontSize: 13 }}>
-            {t.loadingCalendar}
-          </div>
-        )}
-      </section>
-
-      <section style={isMobile ? mobileMainGrid : mainGrid}>
-        <div style={isMobile ? mobileSectionCardSmall : sectionCardSmall}>
-          <h2 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>{t.selectDay}</h2>
-
-          <div style={isMobile ? mobileCalendarGrid : calendarGrid}>
-            {Array.from({ length: DAYS_PER_CYCLE }).map((_, i) => {
-              const d = i + 1;
-              const locked = !vipActive && d > FREE_DAYS;
-              const active = d === selectedDay;
-
-              return (
-                <button
-                  key={d}
-                  onClick={() => setSelectedDay(d)}
-                  style={{
-                    minHeight: isMobile ? 48 : undefined,
-                    padding: isMobile ? "10px 0" : "12px 0",
-                    borderRadius: isMobile ? 10 : 12,
-                    border: active ? "2px solid #111" : "1px solid #e6e6e6",
-                    cursor: "pointer",
-                    fontWeight: 900,
-                    background: locked ? "#fafafa" : "#fff",
-                    color: locked ? "#999" : "#111",
-                    position: "relative",
-                  }}
-                  aria-label={`${t.day} ${d}${locked ? ` (${t.vipLabel})` : ""}`}
-                  title={locked ? t.vipLabel : t.freeLabel}
-                >
-                  {d}
-                  {locked && <span style={vipChip}>{t.vipLabel}</span>}
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={{ marginTop: 14, color: "#666", fontSize: 13, lineHeight: 1.4 }}>
-            <strong>{t.freeLabel}:</strong> {t.day.toLowerCase()}s 1-{FREE_DAYS}. <br />
-            <strong>{t.vipLabel}:</strong> {t.day.toLowerCase()}s {FREE_DAYS + 1}-{DAYS_PER_CYCLE}.
-          </div>
-        </div>
-
-        <div style={isMobile ? mobileSectionCardSmall : sectionCardSmall}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <h2 style={{ marginTop: 0, fontSize: isMobile ? 20 : 22, fontWeight: 900, lineHeight: 1.15 }}>
-              {t.day} {selectedDay} - {isVipLocked ? t.contentVip : t.contentUnlocked}
-            </h2>
-
-            {isVipLocked && <a href="/vip" style={isMobile ? mobileLinkDark : linkDark}>{t.unlockNow}</a>}
-          </div>
-
-          {!dayPlan ? (
-            <p style={{ color: "#666" }}>{t.noContent}</p>
-          ) : isVipLocked ? (
-            <LockedPreview t={t} />
-          ) : (
-            <DayContent dayPlan={dayPlan} t={t} />
-          )}
-
-          {!isVipLocked && (
-            <div style={isMobile ? mobileNavRow : navRow}>
-              <button onClick={() => setSelectedDay((d) => Math.max(1, d - 1))} style={isMobile ? mobileNavBtn : navBtn}>
-                {"<"} {t.previousDay}
-              </button>
-              <button onClick={() => setSelectedDay((d) => Math.min(DAYS_PER_CYCLE, d + 1))} style={isMobile ? mobileNavBtn : navBtn}>
-                {t.nextDay} {">"}
-              </button>
+    <main style={S.page}>
+      <div style={S.container}>
+        <div style={S.hero}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={S.heroTitle}>{t.today}</div>
+              <div style={S.heroSub}>{t.sub}</div>
             </div>
-          )}
+            <span style={isVip ? S.badgeVip : S.badgeFree}>{isVip ? "VIP" : t.free}</span>
+          </div>
+          <div style={S.progressTrack}>
+            <div style={{ ...S.progressFill, width: `${(selectedDay / TOTAL_DAYS) * 100}%` }} />
+          </div>
         </div>
-      </section>
 
-      <section style={{ ...(isMobile ? mobileSectionCard : sectionCard), marginTop: isMobile ? 12 : 18 }}>
-        <h3 style={{ marginTop: 0, fontSize: 18, fontWeight: 900 }}>{t.finalTitle}</h3>
-        <p style={{ color: "#555", marginTop: 8, lineHeight: 1.5 }}>
-          {t.finalText} <strong>Checklist</strong> + <strong>{t.goalsTitle}</strong>.
-        </p>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <a href="/vip" style={isMobile ? mobileLinkDark : linkDark}>{t.becomeVip}</a>
-          <a href="/vip/metas" style={isMobile ? mobileLinkGhost : linkGhost}>{t.viewGoals}</a>
-          <a href="/vip/checklist" style={isMobile ? mobileLinkGhost : linkGhost}>{t.viewChecklist}</a>
+        <div style={S.monthRow}>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+            <button key={m} style={S.monthChip} onClick={() => setSelectedDay((m - 1) * 30 + 1)}>
+              {t.month} {m}
+            </button>
+          ))}
         </div>
-      </section>
+
+        <div style={S.dayRow}>
+          {days.map((d) => {
+            const isLocked = !isVip && d.day > FREE_DAYS;
+            const sel = d.day === selectedDay;
+            return (
+              <button
+                key={d.day}
+                onClick={() => setSelectedDay(d.day)}
+                style={{ ...S.dayBtn, ...(sel ? S.dayBtnSel : isLocked ? S.dayBtnLocked : {}) }}
+              >
+                {isLocked && !sel ? "🔒" : d.day}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={S.dayTitle}>
+          {t.day} {selectedDay} {t.of} {TOTAL_DAYS}
+        </div>
+
+        {loading && <div style={S.center}>{t.loading}</div>}
+        {error && <div style={S.errorCard}>{error}</div>}
+
+        {!loading && plan && (
+          <>
+            <Card accent="orange" title={t.workout} items={pickList(plan.workout, lang)} />
+
+            {lockedDay ? (
+              <LockedDay day={selectedDay} plan={plan} lang={lang} t={t} />
+            ) : (
+              <>
+                {premiumLocked && <FreeBanner t={t} />}
+                {SLOTS.map((slot) =>
+                  isVip ? (
+                    <RecipeCard
+                      key={slot}
+                      label={MEAL_LABEL[slot][lang]}
+                      recipe={recipes[plan.meals[slot]]}
+                      lang={lang}
+                      t={t}
+                    />
+                  ) : (
+                    <LockedMeal key={slot} label={MEAL_LABEL[slot][lang]} name={pick(plan.summary[slot], lang)} t={t} />
+                  )
+                )}
+                {isVip ? (
+                  pickList(plan.tips, lang).length > 0 && (
+                    <Card accent="green" title={t.tips} items={pickList(plan.tips, lang)} highlight />
+                  )
+                ) : (
+                  <LockedTips t={t} />
+                )}
+              </>
+            )}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <button style={{ ...S.navBtn, background: "#1FB83F" }} disabled={selectedDay <= 1} onClick={() => setSelectedDay((v) => Math.max(1, v - 1))}>{t.prev}</button>
+              <button style={{ ...S.navBtn, background: "#1677FF" }} disabled={selectedDay >= TOTAL_DAYS} onClick={() => setSelectedDay((v) => Math.min(TOTAL_DAYS, v + 1))}>{t.next}</button>
+            </div>
+          </>
+        )}
+      </div>
       <MobileNav active="calendar" />
     </main>
   );
 }
 
-type FreeTexts = (typeof translations)[Language]["free"];
-
-const page: React.CSSProperties = {
-  padding: 28,
-  maxWidth: 1100,
-  margin: "28px auto",
-};
-
-const mobilePage: React.CSSProperties = {
-  padding: 12,
-  maxWidth: 520,
-  margin: "12px auto",
-};
-
-const sectionCard: React.CSSProperties = {
-  padding: 24,
-  borderRadius: 18,
-  border: "1px solid #eee",
-  background: "#fff",
-  color: "#111",
-};
-
-const mobileSectionCard: React.CSSProperties = {
-  padding: 16,
-  borderRadius: 16,
-  border: "1px solid #eee",
-  background: "#fff",
-  color: "#111",
-};
-
-const sectionCardSmall: React.CSSProperties = {
-  padding: 16,
-  borderRadius: 18,
-  border: "1px solid #eee",
-  background: "#fff",
-  color: "#111",
-};
-
-const mobileSectionCardSmall: React.CSSProperties = {
-  padding: 14,
-  borderRadius: 16,
-  border: "1px solid #eee",
-  background: "#fff",
-  color: "#111",
-};
-
-const topRow: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const languageGroup: React.CSSProperties = {
-  display: "inline-flex",
-  gap: 6,
-  padding: 4,
-  borderRadius: 999,
-  border: "1px solid rgba(17,17,17,0.10)",
-  background: "#fff",
-};
-
-const languageButton: React.CSSProperties = {
-  border: "none",
-  borderRadius: 999,
-  background: "transparent",
-  color: "#111",
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 950,
-  padding: "7px 10px",
-};
-
-const languageButtonActive: React.CSSProperties = {
-  background: "#111",
-  color: "#fff",
-};
-
-const featureGrid: React.CSSProperties = {
-  display: "grid",
-  gap: 12,
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-};
-
-const mainGrid: React.CSSProperties = {
-  marginTop: 18,
-  display: "grid",
-  gap: 16,
-  gridTemplateColumns: "360px 1fr",
-  alignItems: "start",
-};
-
-const mobileMainGrid: React.CSSProperties = {
-  marginTop: 12,
-  display: "grid",
-  gap: 12,
-  gridTemplateColumns: "1fr",
-  alignItems: "start",
-};
-
-const calendarGrid: React.CSSProperties = {
-  display: "grid",
-  gap: 10,
-  gridTemplateColumns: "repeat(5, 1fr)",
-};
-
-const mobileCalendarGrid: React.CSSProperties = {
-  display: "grid",
-  gap: 8,
-  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-};
-
-const actionRow: React.CSSProperties = {
-  display: "flex",
-  gap: 12,
-  flexWrap: "wrap",
-  marginTop: 14,
-};
-
-const mobileActionRow: React.CSSProperties = {
-  display: "grid",
-  gap: 8,
-  gridTemplateColumns: "1fr",
-  marginTop: 14,
-};
-
-const linkGhost: React.CSSProperties = {
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #ddd",
-  fontWeight: 900,
-  textDecoration: "none",
-  color: "#111",
-  background: "#fff",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const mobileLinkGhost: React.CSSProperties = {
-  ...linkGhost,
-  width: "100%",
-  minHeight: 46,
-};
-
-const linkGhostStrong: React.CSSProperties = {
-  ...linkGhost,
-  border: "1px solid #111",
-};
-
-const linkDark: React.CSSProperties = {
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #111",
-  fontWeight: 900,
-  textDecoration: "none",
-  color: "#fff",
-  background: "#111",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const mobileLinkDark: React.CSSProperties = {
-  ...linkDark,
-  width: "100%",
-  minHeight: 46,
-};
-
-const navBtn: React.CSSProperties = {
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #ddd",
-  fontWeight: 900,
-  cursor: "pointer",
-  background: "#fff",
-};
-
-const navRow: React.CSSProperties = {
-  marginTop: 18,
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const mobileNavRow: React.CSSProperties = {
-  marginTop: 14,
-  display: "grid",
-  gap: 8,
-  gridTemplateColumns: "1fr 1fr",
-};
-
-const mobileNavBtn: React.CSSProperties = {
-  ...navBtn,
-  minHeight: 44,
-  padding: "10px 8px",
-};
-
-const vipChip: React.CSSProperties = {
-  position: "absolute",
-  right: 8,
-  top: 6,
-  fontSize: 11,
-  fontWeight: 900,
-  color: "#999",
-};
-
-function VipFeatureCard({
-  title,
-  desc,
-  href,
-  badge,
-  openLabel,
-}: {
-  title: string;
-  desc: string;
-  href: string;
-  badge: string;
-  openLabel: string;
-}) {
+/* ============ Componentes ============ */
+function Card({ accent, title, items, highlight }: { accent: "orange" | "green"; title: string; items: string[]; highlight?: boolean }) {
   return (
-    <a href={href} style={featureCard}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 16, fontWeight: 950 }}>{title}</div>
-        <div style={featureBadge}>{badge}</div>
-      </div>
-      <div style={{ marginTop: 10, color: "#555", fontWeight: 700, lineHeight: 1.5 }}>{desc}</div>
-      <div style={{ marginTop: 12, fontWeight: 950 }}>{openLabel} {">"}</div>
-    </a>
+    <div style={{ ...S.card, ...(highlight ? { background: "#2B2F18" } : {}) }}>
+      <div style={{ ...S.cardBar, background: accent === "orange" ? "linear-gradient(90deg,#FFC438,#FF7A00)" : "linear-gradient(90deg,#8EEA35,#2AC04D)" }} />
+      <div style={S.cardTitle}>{title}</div>
+      {items.map((it, i) => (<div key={i} style={S.line}>- {it}</div>))}
+    </div>
   );
 }
 
-const featureCard: React.CSSProperties = {
-  textDecoration: "none",
-  color: "#111",
-  borderRadius: 18,
-  border: "1px solid #eee",
-  background: "#fff",
-  padding: 16,
-  display: "block",
-};
-
-const featureBadge: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 950,
-  padding: "6px 10px",
-  borderRadius: 999,
-  border: "1px solid #111",
-  background: "#111",
-  color: "#fff",
-  whiteSpace: "nowrap",
-};
-
-function DayContent({ dayPlan, t }: { dayPlan: DayDoc; t: FreeTexts }) {
-  const title =
-    dayPlan.title && dayPlan.title.trim().length > 0
-      ? dayPlan.title
-      : `${t.day} ${dayPlan.day} - ${t.dayFallbackTitle}`;
-
+function RecipeCard({ label, recipe, lang, t }: { label: string; recipe?: Recipe; lang: Lang; t: Record<string, string> }) {
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <Block title={title} items={[]} hideList />
-      <Block title={t.workoutBlock} items={dayPlan.workout ?? []} />
-
-      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-        <Block title={t.breakfast} items={dayPlan.meals?.cafe ?? []} />
-        <Block title={t.lunch} items={dayPlan.meals?.almoco ?? []} />
-        <Block title={t.snack} items={dayPlan.meals?.lanche ?? []} />
-        <Block title={t.treats} items={dayPlan.meals?.besteirinhas ?? []} />
-        <Block title={t.dinner} items={dayPlan.meals?.janta ?? []} />
-      </div>
-
-      {Array.isArray(dayPlan.tips) && dayPlan.tips.length > 0 && (
-        <Block title={t.dailyTips} items={dayPlan.tips} />
+    <div style={S.card}>
+      <div style={{ ...S.cardBar, background: "linear-gradient(90deg,#8EEA35,#2AC04D)" }} />
+      <div style={S.mealLabel}>{label}</div>
+      {!recipe ? (
+        <div style={S.line}>{t.loading}</div>
+      ) : (
+        <>
+          <div style={S.recipeTitle}>{pick(recipe.title, lang)}</div>
+          <div style={S.meta}>{recipe.timeMin} min · {recipe.kcal} kcal</div>
+          <div style={S.subTitle}>{t.ingredients}</div>
+          {pickList(recipe.ingredients, lang).map((it, i) => (<div key={i} style={S.line}>- {it}</div>))}
+          <div style={{ ...S.subTitle, marginTop: 6 }}>{t.steps}</div>
+          {pickList(recipe.steps, lang).map((it, i) => (<div key={i} style={S.line}>{i + 1}. {it}</div>))}
+        </>
       )}
     </div>
   );
 }
 
-function LockedPreview({ t }: { t: FreeTexts }) {
+function LockedMeal({ label, name, t }: { label: string; name: string; t: Record<string, string> }) {
   return (
-    <div style={{ marginTop: 10 }}>
-      <p style={{ color: "#555", lineHeight: 1.5 }}>{t.lockedText}</p>
-      <ul style={{ lineHeight: 1.8, fontWeight: 700, color: "#222" }}>
-        {t.lockedItems.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-      <div style={previewBox}>{t.preview}</div>
+    <div style={S.card}>
+      <div style={{ ...S.cardBar, background: "linear-gradient(90deg,#FFC438,#FF7A00)" }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={S.mealLabel}>{label}</div>
+        <span style={S.vipChip}>🔒 VIP</span>
+      </div>
+      <div style={S.recipeTitle}>{name}</div>
+      <RedactedLines n={3} />
+      <Link href="/vip" style={S.lockCta}>🔒 {t.seeFull}</Link>
     </div>
   );
 }
 
-const previewBox: React.CSSProperties = {
-  marginTop: 12,
-  padding: 14,
-  borderRadius: 14,
-  border: "1px dashed #ddd",
-  background: "#fafafa",
-  color: "#666",
-  fontWeight: 700,
+function LockedTips({ t }: { t: Record<string, string> }) {
+  return (
+    <div style={{ ...S.card, background: "#2B2F18" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={S.cardTitle}>{t.tips}</div>
+        <span style={S.vipChip}>🔒 VIP</span>
+      </div>
+      <div style={S.line}>{t.tipsLocked}</div>
+      <RedactedLines n={2} />
+      <Link href="/vip" style={S.lockCta}>🔒 {t.seeFull}</Link>
+    </div>
+  );
+}
+
+function FreeBanner({ t }: { t: Record<string, string> }) {
+  return (
+    <div style={S.banner}>
+      <div style={S.bannerTitle}>{t.freeTitle}</div>
+      <div style={S.bannerText}>{t.freeText}</div>
+      <Link href="/vip" style={S.bannerBtn}>{t.seeVip}</Link>
+    </div>
+  );
+}
+
+function LockedDay({ day, plan, lang, t }: { day: number; plan: PlanDay; lang: Lang; t: Record<string, string> }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={S.vipHero}>
+        <div style={S.vipHeroTitle}>🔒 {t.lockedDay.replace("%d", String(day))}</div>
+        <Benefit text={t.benefits1} />
+        <Benefit text={t.benefits2} />
+        <Benefit text={t.benefits3} />
+        <Link href="/vip" style={S.vipHeroBtn}>{t.unlockAll}</Link>
+        <div style={S.social}>{t.social}</div>
+      </div>
+      {SLOTS.map((slot) => (
+        <div key={slot} style={S.card}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={S.mealLabel}>{MEAL_LABEL[slot][lang]}</div>
+            <span style={S.vipChip}>🔒 VIP</span>
+          </div>
+          <div style={S.recipeTitle}>{pick(plan.summary[slot], lang)}</div>
+          <RedactedLines n={2} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Benefit({ text }: { text: string }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#EDE7DA", fontSize: 14 }}>
+      <span style={{ color: "#8EEA35" }}>✓</span> {text}
+    </div>
+  );
+}
+
+function RedactedLines({ n }: { n: number }) {
+  const widths = ["92%", "72%", "60%"];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 4 }}>
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} style={{ width: widths[i % widths.length], height: 11, borderRadius: 6, background: "rgba(255,255,255,0.12)" }} />
+      ))}
+    </div>
+  );
+}
+
+/* ============ Estilos (visual do app) ============ */
+const S: Record<string, React.CSSProperties> = {
+  page: { minHeight: "100vh", background: "linear-gradient(180deg,#07152B,#151018 45%,#07070A)", color: "#fff", paddingBottom: 90 },
+  container: { maxWidth: 620, margin: "0 auto", padding: "18px 16px", display: "flex", flexDirection: "column", gap: 14 },
+  center: { textAlign: "center", padding: 36, color: "#C9C4D6" },
+  hero: { borderRadius: 24, padding: 18, background: "linear-gradient(160deg,#1F56A7,#1B2538 55%,#211712)", border: "1px solid rgba(255,255,255,0.18)" },
+  heroTitle: { fontSize: 30, fontWeight: 900, color: "#FFB637", textShadow: "0 3px 6px rgba(0,0,0,0.5)" },
+  heroSub: { fontSize: 15, fontWeight: 800, color: "#fff", marginTop: 2 },
+  badgeVip: { background: "#8EEA35", color: "#102000", fontWeight: 900, fontSize: 12, padding: "6px 14px", borderRadius: 999 },
+  badgeFree: { background: "#34343A", color: "#fff", fontWeight: 900, fontSize: 12, padding: "6px 14px", borderRadius: 999 },
+  progressTrack: { marginTop: 12, height: 8, borderRadius: 999, background: "#0E0E12", overflow: "hidden" },
+  progressFill: { height: 8, borderRadius: 999, background: "linear-gradient(90deg,#FFD743,#FF8A00)" },
+  monthRow: { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 },
+  monthChip: { flex: "0 0 auto", background: "rgba(17,24,39,0.5)", border: "1px solid rgba(69,183,255,0.25)", color: "#CFE4FF", borderRadius: 999, padding: "7px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  dayRow: { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6 },
+  dayBtn: { flex: "0 0 auto", width: 52, height: 52, borderRadius: 12, border: "1px solid rgba(255,255,255,0.5)", background: "linear-gradient(180deg,#fff,#E9EDF5)", color: "#111", fontWeight: 900, fontSize: 16, cursor: "pointer" },
+  dayBtnSel: { background: "linear-gradient(180deg,#FFD44A,#FF8A00)", color: "#102000", border: "1px solid rgba(255,255,255,0.6)" },
+  dayBtnLocked: { background: "linear-gradient(180deg,#3A3A43,#18181D)", color: "#9A9AA1", border: "1px solid rgba(255,255,255,0.14)" },
+  dayTitle: { fontSize: 24, fontWeight: 900, color: "#fff" },
+  card: { borderRadius: 18, background: "#19191F", border: "1px solid rgba(255,255,255,0.1)", padding: 16, display: "flex", flexDirection: "column", gap: 6, boxShadow: "0 8px 16px rgba(0,0,0,0.3)" },
+  cardBar: { height: 5, borderRadius: 999, marginBottom: 4 },
+  cardTitle: { fontSize: 17, fontWeight: 900, color: "#fff" },
+  mealLabel: { fontSize: 13, fontWeight: 800, color: "#FFB637" },
+  recipeTitle: { fontSize: 19, fontWeight: 900, color: "#fff" },
+  meta: { fontSize: 12, fontWeight: 700, color: "#B9C2D0" },
+  subTitle: { fontSize: 14, fontWeight: 900, color: "#FFD86B" },
+  line: { color: "#E7E1D6", lineHeight: 1.5 },
+  vipChip: { background: "rgba(255,176,0,0.2)", color: "#FFD86B", fontSize: 11, fontWeight: 900, padding: "3px 10px", borderRadius: 999 },
+  lockCta: { color: "#FFD86B", fontWeight: 900, fontSize: 13, textDecoration: "none", marginTop: 4 },
+  banner: { borderRadius: 20, padding: 16, border: "1px solid rgba(255,216,107,0.4)", background: "linear-gradient(160deg,#3B2A12,#241A10)", display: "flex", flexDirection: "column", gap: 10 },
+  bannerTitle: { fontSize: 18, fontWeight: 900, color: "#FFD86B" },
+  bannerText: { color: "#FFE7B5", lineHeight: 1.4 },
+  bannerBtn: { textAlign: "center", background: "#FF8A00", color: "#fff", fontWeight: 900, padding: "12px", borderRadius: 14, textDecoration: "none" },
+  vipHero: { borderRadius: 22, padding: 18, border: "1px solid rgba(255,216,107,0.4)", background: "linear-gradient(160deg,#2B2118,#18161D 55%,#111017)", display: "flex", flexDirection: "column", gap: 10 },
+  vipHeroTitle: { fontSize: 21, fontWeight: 900, color: "#fff" },
+  vipHeroBtn: { textAlign: "center", background: "#FF8A00", color: "#fff", fontWeight: 900, padding: "12px", borderRadius: 14, textDecoration: "none", marginTop: 4 },
+  social: { color: "#DCCAA4", fontSize: 12 },
+  navBtn: { flex: 1, color: "#fff", fontWeight: 900, border: "none", borderRadius: 14, padding: "12px", cursor: "pointer" },
+  errorCard: { borderRadius: 12, background: "#321A1D", padding: 16, color: "#fff", fontWeight: 700 },
 };
-
-function Block({
-  title,
-  items,
-  hideList,
-}: {
-  title: string;
-  items: string[];
-  hideList?: boolean;
-}) {
-  return (
-    <div style={{ padding: 14, borderRadius: 16, border: "1px solid #eee", background: "#fff", color: "#111" }}>
-      <h4 style={{ marginTop: 0, marginBottom: hideList ? 0 : 10, fontSize: 16, fontWeight: 900 }}>
-        {title}
-      </h4>
-
-      {!hideList && (
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-          {items.map((x, i) => (
-            <li key={`${x}-${i}`} style={{ fontWeight: 700, color: "#222" }}>
-              {x}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-
-
