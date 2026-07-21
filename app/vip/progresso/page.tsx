@@ -74,6 +74,9 @@ const LOCK: Record<
     desc: string;
     benefitsTitle: string;
     benefits: string[];
+    daily: string;
+    perDay: string;
+    monthly: string;
     reassure: string;
     cta: string;
     free: string;
@@ -91,7 +94,10 @@ const LOCK: Record<
       "Checklist de hábitos e metas semanais",
       "Ferramentas sem limites: IMC, água, proteína e mais",
     ],
-    reassure: "Assinatura mensal no cartão · Cancele quando quiser",
+    daily: "R$ 0,66",
+    perDay: "por dia",
+    monthly: "Menos que um café por dia · R$ 19,90/mês",
+    reassure: "Assinatura no cartão · Cancele quando quiser",
     cta: "Virar VIP agora",
     free: "Ver área grátis",
   },
@@ -107,7 +113,10 @@ const LOCK: Record<
       "Habit checklist and weekly goals",
       "Unlimited tools: BMI, water, protein and more",
     ],
-    reassure: "Monthly card subscription · Cancel anytime",
+    daily: "R$ 0.66",
+    perDay: "per day",
+    monthly: "Less than a coffee a day · R$ 19.90/month",
+    reassure: "Card subscription · Cancel anytime",
     cta: "Become VIP now",
     free: "See free area",
   },
@@ -123,7 +132,10 @@ const LOCK: Record<
       "Checklist de hábitos y metas semanales",
       "Herramientas sin límites: IMC, agua, proteína y más",
     ],
-    reassure: "Suscripción mensual con tarjeta · Cancela cuando quieras",
+    daily: "R$ 0,66",
+    perDay: "por día",
+    monthly: "Menos que un café al día · R$ 19,90/mes",
+    reassure: "Suscripción con tarjeta · Cancela cuando quieras",
     cta: "Hazte VIP ahora",
     free: "Ver área gratis",
   },
@@ -365,6 +377,14 @@ export default function ProgressoPage() {
                 <span style={styles.benefitText}>{b}</span>
               </div>
             ))}
+          </div>
+
+          <div style={styles.priceBox}>
+            <div style={styles.priceMain}>
+              <span style={styles.priceValue}>{L.daily}</span>
+              <span style={styles.priceDay}>{L.perDay}</span>
+            </div>
+            <div style={styles.priceNote}>{L.monthly}</div>
           </div>
 
           <a href="/vip" style={styles.ctaBig}>{L.cta}</a>
@@ -725,8 +745,42 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.4,
     fontSize: 14,
   },
-  ctaBig: {
+  priceBox: {
     marginTop: 18,
+    width: "100%",
+    borderRadius: 18,
+    padding: "14px 16px",
+    background: "rgba(255,182,55,0.10)",
+    border: "1px solid rgba(255,182,55,0.35)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+  },
+  priceMain: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 6,
+  },
+  priceValue: {
+    color: "#FFD86B",
+    fontWeight: 950,
+    fontSize: 40,
+    lineHeight: 1,
+    textShadow: "0 2px 6px rgba(0,0,0,0.5)",
+  },
+  priceDay: {
+    color: "#FFE7A8",
+    fontWeight: 900,
+    fontSize: 16,
+  },
+  priceNote: {
+    color: "#E7DFD0",
+    fontWeight: 700,
+    fontSize: 13,
+  },
+  ctaBig: {
+    marginTop: 14,
     width: "100%",
     padding: "16px 18px",
     borderRadius: 16,
