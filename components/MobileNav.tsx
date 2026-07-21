@@ -19,7 +19,7 @@ const LABELS: Record<ActiveTab, Record<Lang, string>> = {
 const items: Array<{ key: ActiveTab; href: string; icon: string; match: string[] }> = [
   { key: "home", href: "/app", icon: "🏠", match: ["/app"] },
   { key: "plan", href: "/free", icon: "🍽️", match: ["/free"] },
-  { key: "tools", href: "/vip/metas", icon: "🧮", match: ["/vip/metas", "/vip/checklist"] },
+  { key: "tools", href: "/ferramentas", icon: "🧮", match: ["/ferramentas", "/vip/metas", "/vip/checklist"] },
   { key: "progress", href: "/vip/progresso", icon: "📈", match: ["/vip/progresso"] },
   { key: "account", href: "/conta", icon: "👤", match: ["/conta"] },
 ];
