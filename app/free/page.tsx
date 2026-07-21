@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { useRouter } from "next/navigation";
 import {
   collection,
   doc,
@@ -53,8 +52,8 @@ const UI: Record<Lang, Record<string, string>> = {
     today: "Plano de Hoje", sub: "Treino e refeições do dia", day: "Dia", of: "de", month: "Mês",
     workout: "Treino do dia", ingredients: "Ingredientes", steps: "Modo de preparo",
     free: "GRÁTIS", prev: "Anterior", next: "Próximo", loading: "Carregando...",
-    freeTitle: "Você está no plano grátis",
-    freeText: "As receitas completas, com ingredientes e passo a passo, ficam no VIP.",
+    freeTitle: "7 dias grátis liberados 🎉",
+    freeText: "Aproveite! Assine o VIP e libere os 365 dias completos.",
     seeVip: "Ver plano completo (VIP)", unlockAll: "Assinar VIP e liberar tudo",
     lockedDay: "Dia %d é exclusivo do VIP", seeFull: "Ver receita completa no VIP",
     tips: "Dicas do dia", tipsLocked: "As dicas que aceleram o resultado ficam no VIP.",
@@ -68,8 +67,8 @@ const UI: Record<Lang, Record<string, string>> = {
     today: "Today's Plan", sub: "Today's workout and meals", day: "Day", of: "of", month: "Month",
     workout: "Today's workout", ingredients: "Ingredients", steps: "Steps",
     free: "FREE", prev: "Previous", next: "Next", loading: "Loading...",
-    freeTitle: "You are on the free plan",
-    freeText: "Full recipes, with ingredients and step by step, are on VIP.",
+    freeTitle: "7 free days unlocked 🎉",
+    freeText: "Enjoy! Subscribe to VIP and unlock all 365 days.",
     seeVip: "See the full plan (VIP)", unlockAll: "Subscribe to VIP and unlock everything",
     lockedDay: "Day %d is VIP only", seeFull: "See the full recipe on VIP",
     tips: "Daily tips", tipsLocked: "The tips that speed up results are on VIP.",
@@ -83,8 +82,8 @@ const UI: Record<Lang, Record<string, string>> = {
     today: "Plan de hoy", sub: "Entrenamiento y comidas del día", day: "Día", of: "de", month: "Mes",
     workout: "Entrenamiento del día", ingredients: "Ingredientes", steps: "Preparación",
     free: "GRATIS", prev: "Anterior", next: "Siguiente", loading: "Cargando...",
-    freeTitle: "Estás en el plan gratis",
-    freeText: "Las recetas completas, con ingredientes y paso a paso, están en VIP.",
+    freeTitle: "7 días gratis desbloqueados 🎉",
+    freeText: "¡Aprovecha! Suscríbete al VIP y desbloquea los 365 días.",
     seeVip: "Ver el plan completo (VIP)", unlockAll: "Suscribirse a VIP y desbloquear todo",
     lockedDay: "El día %d es solo VIP", seeFull: "Ver la receta completa en VIP",
     tips: "Consejos del día", tipsLocked: "Los consejos que aceleran el resultado están en VIP.",
@@ -106,7 +105,6 @@ const MEAL_LABEL: Record<string, Record<Lang, string>> = {
 
 /* ============ Página ============ */
 export default function FreePage() {
-  const router = useRouter();
   const [lang, setLang] = useState<Lang>("pt");
   const t = UI[lang];
 
@@ -127,7 +125,9 @@ export default function FreePage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user: User | null) => {
       if (!user) {
-        router.push("/login");
+        // Acesso livre (visitante). Login so e pedido para virar VIP.
+        setIsVip(false);
+        setAuthReady(true);
         return;
       }
       try {
@@ -143,7 +143,7 @@ export default function FreePage() {
       setAuthReady(true);
     });
     return () => unsub();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -181,11 +181,12 @@ export default function FreePage() {
   }, [t.errLoad]);
 
   const plan = useMemo(() => days.find((d) => d.day === selectedDay), [days, selectedDay]);
-  const lockedDay = !isVip && selectedDay > FREE_DAYS;
-  const premiumLocked = !isVip;
+  // 7 dias liberados de verdade (para todos, sem login). Dias 8+ so no VIP.
+  const dayUnlocked = isVip || selectedDay <= FREE_DAYS;
+  const lockedDay = !dayUnlocked;
 
   useEffect(() => {
-    if (!isVip || !plan) return;
+    if (!dayUnlocked || !plan) return;
     let alive = true;
     (async () => {
       const ids = SLOTS.map((s) => plan.meals[s]).filter(Boolean);
@@ -215,7 +216,7 @@ export default function FreePage() {
     return () => {
       alive = false;
     };
-  }, [isVip, plan]);
+  }, [dayUnlocked, plan]);
 
   if (!authReady) {
     return (
@@ -280,26 +281,18 @@ export default function FreePage() {
               <LockedDay day={selectedDay} plan={plan} lang={lang} t={t} />
             ) : (
               <>
-                {premiumLocked && <FreeBanner t={t} />}
-                {SLOTS.map((slot) =>
-                  isVip ? (
-                    <RecipeCard
-                      key={slot}
-                      label={MEAL_LABEL[slot][lang]}
-                      recipe={recipes[plan.meals[slot]]}
-                      lang={lang}
-                      t={t}
-                    />
-                  ) : (
-                    <LockedMeal key={slot} label={MEAL_LABEL[slot][lang]} name={pick(plan.summary[slot], lang)} t={t} />
-                  )
-                )}
-                {isVip ? (
-                  pickList(plan.tips, lang).length > 0 && (
-                    <Card accent="green" title={t.tips} items={pickList(plan.tips, lang)} highlight />
-                  )
-                ) : (
-                  <LockedTips t={t} />
+                {!isVip && <FreeBanner t={t} />}
+                {SLOTS.map((slot) => (
+                  <RecipeCard
+                    key={slot}
+                    label={MEAL_LABEL[slot][lang]}
+                    recipe={recipes[plan.meals[slot]]}
+                    lang={lang}
+                    t={t}
+                  />
+                ))}
+                {pickList(plan.tips, lang).length > 0 && (
+                  <Card accent="green" title={t.tips} items={pickList(plan.tips, lang)} highlight />
                 )}
               </>
             )}
@@ -344,35 +337,6 @@ function RecipeCard({ label, recipe, lang, t }: { label: string; recipe?: Recipe
           {pickList(recipe.steps, lang).map((it, i) => (<div key={i} style={S.line}>{i + 1}. {it}</div>))}
         </>
       )}
-    </div>
-  );
-}
-
-function LockedMeal({ label, name, t }: { label: string; name: string; t: Record<string, string> }) {
-  return (
-    <div style={S.card}>
-      <div style={{ ...S.cardBar, background: "linear-gradient(90deg,#FFC438,#FF7A00)" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={S.mealLabel}>{label}</div>
-        <span style={S.vipChip}>🔒 VIP</span>
-      </div>
-      <div style={S.recipeTitle}>{name}</div>
-      <RedactedLines n={3} />
-      <Link href="/vip" style={S.lockCta}>🔒 {t.seeFull}</Link>
-    </div>
-  );
-}
-
-function LockedTips({ t }: { t: Record<string, string> }) {
-  return (
-    <div style={{ ...S.card, background: "#2B2F18" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={S.cardTitle}>{t.tips}</div>
-        <span style={S.vipChip}>🔒 VIP</span>
-      </div>
-      <div style={S.line}>{t.tipsLocked}</div>
-      <RedactedLines n={2} />
-      <Link href="/vip" style={S.lockCta}>🔒 {t.seeFull}</Link>
     </div>
   );
 }
