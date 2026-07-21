@@ -1,6 +1,7 @@
 "use client";
 
 import MobileNav from "@/components/MobileNav";
+import VipGate from "@/components/VipGate";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, type User } from "firebase/auth";
@@ -65,81 +66,6 @@ function isVipFromProfile(data: UserProfile) {
   }
   return false;
 }
-
-const LOCK: Record<
-  Language,
-  {
-    kicker: string;
-    title: string;
-    desc: string;
-    benefitsTitle: string;
-    benefits: string[];
-    daily: string;
-    perDay: string;
-    monthly: string;
-    reassure: string;
-    cta: string;
-    free: string;
-  }
-> = {
-  pt: {
-    kicker: "PROGRESSO VIP",
-    title: "Veja sua barriga secar dia após dia",
-    desc: "O painel completo de evolução é exclusivo dos membros VIP. Acompanhe sua sequência, sua semana e cada avanço de verdade — o que te mantém firme até o resultado.",
-    benefitsTitle: "Ao virar VIP você desbloqueia hoje:",
-    benefits: [
-      "Painel de progresso completo: sequência, semana e recordes",
-      "365 dias de plano completo, sem travas",
-      "Todas as receitas com ingredientes e passo a passo",
-      "Checklist de hábitos e metas semanais",
-      "Ferramentas sem limites: IMC, água, proteína e mais",
-    ],
-    daily: "R$ 0,66",
-    perDay: "por dia",
-    monthly: "Menos que um café por dia · R$ 19,90/mês",
-    reassure: "Assinatura no cartão · Cancele quando quiser",
-    cta: "Virar VIP agora",
-    free: "Ver área grátis",
-  },
-  en: {
-    kicker: "VIP PROGRESS",
-    title: "Watch your belly shrink day after day",
-    desc: "The full progress dashboard is exclusive to VIP members. Track your streak, your week and every real gain — what keeps you going until the result.",
-    benefitsTitle: "Become VIP and unlock today:",
-    benefits: [
-      "Full progress dashboard: streak, week and records",
-      "365 days of the complete plan, no locks",
-      "Every recipe with ingredients and step by step",
-      "Habit checklist and weekly goals",
-      "Unlimited tools: BMI, water, protein and more",
-    ],
-    daily: "R$ 0.66",
-    perDay: "per day",
-    monthly: "Less than a coffee a day · R$ 19.90/month",
-    reassure: "Card subscription · Cancel anytime",
-    cta: "Become VIP now",
-    free: "See free area",
-  },
-  es: {
-    kicker: "PROGRESO VIP",
-    title: "Mira tu barriga reducirse día a día",
-    desc: "El panel completo de evolución es exclusivo de los miembros VIP. Sigue tu racha, tu semana y cada avance real — lo que te mantiene firme hasta el resultado.",
-    benefitsTitle: "Hazte VIP y desbloquea hoy:",
-    benefits: [
-      "Panel de progreso completo: racha, semana y récords",
-      "365 días del plan completo, sin bloqueos",
-      "Todas las recetas con ingredientes y paso a paso",
-      "Checklist de hábitos y metas semanales",
-      "Herramientas sin límites: IMC, agua, proteína y más",
-    ],
-    daily: "R$ 0,66",
-    perDay: "por día",
-    monthly: "Menos que un café al día · R$ 19,90/mes",
-    reassure: "Suscripción con tarjeta · Cancela cuando quieras",
-    cta: "Hazte VIP ahora",
-    free: "Ver área gratis",
-  },
-};
 
 export default function ProgressoPage() {
   const router = useRouter();
@@ -355,44 +281,13 @@ export default function ProgressoPage() {
   }
 
   if (!isVip) {
-    const L = LOCK[language];
     return (
-      <main style={styles.centerPage}>
-        <div style={styles.bg} aria-hidden />
-        <section style={styles.lock}>
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <LanguageSwitcher language={language} onChange={setLanguage} />
-          </div>
-
-          <div style={styles.lockMedal} aria-hidden>👑</div>
-          <div style={styles.lockKicker}>{L.kicker}</div>
-          <h1 style={styles.lockTitle}>{L.title}</h1>
-          <p style={styles.lockDesc}>{L.desc}</p>
-
-          <div style={styles.benefitsCard}>
-            <div style={styles.benefitsTitle}>{L.benefitsTitle}</div>
-            {L.benefits.map((b) => (
-              <div key={b} style={styles.benefitRow}>
-                <span style={styles.benefitCheck} aria-hidden>✓</span>
-                <span style={styles.benefitText}>{b}</span>
-              </div>
-            ))}
-          </div>
-
-          <div style={styles.priceBox}>
-            <div style={styles.priceMain}>
-              <span style={styles.priceValue}>{L.daily}</span>
-              <span style={styles.priceDay}>{L.perDay}</span>
-            </div>
-            <div style={styles.priceNote}>{L.monthly}</div>
-          </div>
-
-          <a href="/vip" style={styles.ctaBig}>{L.cta}</a>
-          <div style={styles.reassure}>🔒 {L.reassure}</div>
-          <a href="/free" style={styles.freeLink}>{L.free}</a>
-        </section>
-        <MobileNav active="progress" />
-      </main>
+      <VipGate
+        feature="progress"
+        navActive="progress"
+        language={language}
+        onChangeLanguage={setLanguage}
+      />
     );
   }
 

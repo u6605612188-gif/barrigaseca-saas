@@ -1,6 +1,7 @@
 "use client";
 
 import MobileNav from "@/components/MobileNav";
+import VipGate from "@/components/VipGate";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
@@ -387,19 +388,12 @@ export default function ChecklistPage() {
 
   if (!isVip) {
     return (
-      <main style={{ padding: 28, maxWidth: 980, margin: "28px auto" }}>
-        <section style={card}>
-          <LanguageSwitcher language={language} onChange={setLanguage} />
-          <h1 style={{ fontSize: 28, fontWeight: 950, margin: "12px 0 0" }}>{t.lockedTitle}</h1>
-          <p style={{ marginTop: 10, color: "#555", fontWeight: 700, lineHeight: 1.55 }}>{t.lockedDesc}</p>
-
-          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="/vip" style={btnDark}>{t.becomeVip}</a>
-            <a href="/vip/metas" style={btnGhost}>{t.goals}</a>
-            <a href="/app" style={btnGhost}>{t.back}</a>
-          </div>
-        </section>
-      </main>
+      <VipGate
+        feature="checklist"
+        navActive="tools"
+        language={language}
+        onChangeLanguage={setLanguage}
+      />
     );
   }
 

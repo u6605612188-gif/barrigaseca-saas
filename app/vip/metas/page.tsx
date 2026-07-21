@@ -1,6 +1,7 @@
 "use client";
 
 import MobileNav from "@/components/MobileNav";
+import VipGate from "@/components/VipGate";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, type User } from "firebase/auth";
@@ -216,6 +217,17 @@ export default function MetasPage() {
   }, [daysDoneCount, goalDays, goalWorkouts, doneWorkouts]);
 
   if (loading) return <main style={{ padding: 28 }}>{t.loading}</main>;
+
+  if (!vipLoading && !isVip) {
+    return (
+      <VipGate
+        feature="goals"
+        navActive="tools"
+        language={language}
+        onChangeLanguage={setLanguage}
+      />
+    );
+  }
 
   return (
     <main style={styles.page}>
