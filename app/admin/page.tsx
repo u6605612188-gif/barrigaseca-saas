@@ -11,6 +11,8 @@ import { auth } from "@/lib/firebase";
 
 const ADMIN_EMAIL = "maicontavares503@gmail.com";
 
+type RecentDay = { date: string; workout: boolean; meals: boolean; water: boolean; checkin: boolean };
+
 type AdminUser = {
   id: string;
   uid: string;
@@ -26,6 +28,14 @@ type AdminUser = {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   subscriptionStatus: string | null;
+  // engajamento
+  lastActiveAt: string | null;
+  activeDays: number;
+  workoutsDone: number;
+  mealsDone: number;
+  waterDone: number;
+  checkIns: number;
+  recent: RecentDay[];
 };
 
 type AdminResponse = {
@@ -35,6 +45,7 @@ type AdminResponse = {
     vip: number;
     free: number;
     withStripe: number;
+    active7d: number;
   };
   error?: string;
 };
@@ -288,6 +299,7 @@ export default function AdminPage() {
           <Stat title="Usuarios" value={data?.summary.total ?? 0} />
           <Stat title="VIP" value={data?.summary.vip ?? 0} />
           <Stat title="Gratis" value={data?.summary.free ?? 0} />
+          <Stat title="Ativos 7d" value={data?.summary.active7d ?? 0} />
           <Stat title="Stripe" value={data?.summary.withStripe ?? 0} />
           <Stat title="Recuperar" value={recoverySummary.total} />
         </section>
@@ -380,12 +392,44 @@ export default function AdminPage() {
               </div>
 
               <div style={styles.infoGrid}>
-                <Info label="Ciclos" value={String(item.unlockedCycles)} />
                 <Info label="Cadastro" value={formatDate(item.createdAt)} />
-                <Info label="Ultimo login" value={formatDate(item.lastLoginAt)} />
+                <Info label="Ultima atividade" value={formatDate(item.lastActiveAt)} />
+                <Info label="Dias ativos" value={String(item.activeDays)} />
                 <Info label="VIP ate" value={formatDate(item.vipUntil)} />
                 <Info label="Idioma" value={item.language ?? "-"} />
                 <Info label="Status assinatura" value={item.subscriptionStatus ?? "-"} />
+              </div>
+
+              <div style={styles.engBox}>
+                <div style={styles.engHeader}>
+                  <span style={styles.engTitle}>Engajamento (passos no app)</span>
+                  <span style={styles.engSub}>
+                    {item.activeDays > 0
+                      ? `Ativa ha ${daysSince(item.lastActiveAt) ?? 0} dia(s) - ${item.activeDays} dias com atividade`
+                      : "Ainda sem atividade registrada"}
+                  </span>
+                </div>
+                <div style={styles.engStats}>
+                  <EngPill icon="🏋️" label="Treinos" value={item.workoutsDone} />
+                  <EngPill icon="🍽️" label="Refeicoes" value={item.mealsDone} />
+                  <EngPill icon="💧" label="Agua" value={item.waterDone} />
+                  <EngPill icon="✅" label="Check-ins" value={item.checkIns} />
+                </div>
+                {item.recent.length > 0 && (
+                  <div style={styles.recentRow}>
+                    {item.recent.map((r) => (
+                      <div key={r.date} style={styles.recentDay} title={r.date}>
+                        <div style={styles.recentDate}>{r.date.length >= 10 ? r.date.slice(5) : r.date}</div>
+                        <div style={styles.recentIcons}>
+                          <span title="Treino">{r.workout ? "🏋️" : "·"}</span>
+                          <span title="Refeicoes">{r.meals ? "🍽️" : "·"}</span>
+                          <span title="Agua">{r.water ? "💧" : "·"}</span>
+                          <span title="Check-in">{r.checkin ? "✅" : "·"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {(item.stripeCustomerId || item.stripeSubscriptionId) && (
@@ -439,6 +483,15 @@ function Info({ label, value }: { label: string; value: string }) {
     <div>
       <div style={styles.infoLabel}>{label}</div>
       <div style={styles.infoValue}>{value}</div>
+    </div>
+  );
+}
+
+function EngPill({ icon, label, value }: { icon: string; label: string; value: number }) {
+  return (
+    <div style={styles.engPill}>
+      <div style={styles.engPillTop}>{icon} {value}</div>
+      <div style={styles.engPillLabel}>{label}</div>
     </div>
   );
 }
@@ -769,4 +822,53 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(255,255,255,0.94)",
     fontWeight: 900,
   },
+  engBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
+    background: "#fafafa",
+    border: "1px solid #eee",
+    display: "grid",
+    gap: 10,
+  },
+  engHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+    flexWrap: "wrap",
+    alignItems: "baseline",
+  },
+  engTitle: { fontSize: 13, fontWeight: 950, color: "#111" },
+  engSub: { fontSize: 12, fontWeight: 800, color: "#666" },
+  engStats: {
+    display: "grid",
+    gap: 8,
+    gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))",
+  },
+  engPill: {
+    padding: "8px 10px",
+    borderRadius: 12,
+    background: "#fff",
+    border: "1px solid #eee",
+    textAlign: "center",
+  },
+  engPillTop: { fontSize: 16, fontWeight: 950, color: "#111" },
+  engPillLabel: { marginTop: 2, fontSize: 11, fontWeight: 800, color: "#666" },
+  recentRow: {
+    display: "flex",
+    gap: 6,
+    overflowX: "auto",
+    paddingBottom: 2,
+  },
+  recentDay: {
+    flex: "0 0 auto",
+    minWidth: 56,
+    padding: "6px 4px",
+    borderRadius: 10,
+    background: "#fff",
+    border: "1px solid #eee",
+    textAlign: "center",
+  },
+  recentDate: { fontSize: 10, fontWeight: 900, color: "#888" },
+  recentIcons: { marginTop: 4, fontSize: 12, letterSpacing: 1 },
 };

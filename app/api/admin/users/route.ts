@@ -96,10 +96,47 @@ export async function GET(req: Request) {
     const db = admin.firestore();
     const snap = await db.collection("users").orderBy("createdAt", "desc").limit(300).get();
 
+    // Engajamento: agrega o dailyProgress (os "passos" de cada usuario no app).
+    type Recent = { date: string; workout: boolean; meals: boolean; water: boolean; checkin: boolean; ms: number };
+    type Eng = { activeDays: number; lastMs: number; workouts: number; meals: number; water: number; checkins: number; recent: Recent[] };
+    const progressByUid = new Map<string, Eng>();
+    try {
+      const progressSnap = await db.collectionGroup("dailyProgress").limit(8000).get();
+      progressSnap.forEach((p) => {
+        const uid = p.ref.parent.parent?.id;
+        if (!uid) return;
+        const d = p.data();
+        const ms = asMillis(d.updatedAt) ?? asMillis(d.dateKey) ?? 0;
+        const e = progressByUid.get(uid) ?? { activeDays: 0, lastMs: 0, workouts: 0, meals: 0, water: 0, checkins: 0, recent: [] };
+        e.activeDays += 1;
+        e.lastMs = Math.max(e.lastMs, ms);
+        if (d.workoutDone === true) e.workouts += 1;
+        if (d.mealsDone === true) e.meals += 1;
+        if (d.waterDone === true) e.water += 1;
+        if (d.checkInDone === true) e.checkins += 1;
+        e.recent.push({
+          date: String(d.dateKey ?? p.id),
+          workout: d.workoutDone === true,
+          meals: d.mealsDone === true,
+          water: d.waterDone === true,
+          checkin: d.checkInDone === true,
+          ms,
+        });
+        progressByUid.set(uid, e);
+      });
+    } catch {
+      /* segue sem engajamento se o collectionGroup falhar */
+    }
+
     const users = snap.docs.map((docSnap) => {
       const data = docSnap.data();
       const unlockedCycles = Number(data.unlockedCycles ?? 0);
       const vipActive = isVipActive(data);
+      const eng = progressByUid.get(docSnap.id);
+      const recent = (eng?.recent ?? [])
+        .sort((a, b) => b.ms - a.ms)
+        .slice(0, 7)
+        .map((r) => ({ date: r.date, workout: r.workout, meals: r.meals, water: r.water, checkin: r.checkin }));
 
       return {
         id: docSnap.id,
@@ -116,14 +153,25 @@ export async function GET(req: Request) {
         stripeCustomerId: data.stripeCustomerId ?? null,
         stripeSubscriptionId: data.stripeSubscriptionId ?? null,
         subscriptionStatus: data.subscriptionStatus ?? null,
+        // ==== engajamento ====
+        lastActiveAt: eng?.lastMs ? new Date(eng.lastMs).toISOString() : toIso(data.updatedAt),
+        activeDays: eng?.activeDays ?? 0,
+        workoutsDone: eng?.workouts ?? 0,
+        mealsDone: eng?.meals ?? 0,
+        waterDone: eng?.water ?? 0,
+        checkIns: eng?.checkins ?? 0,
+        recent,
       };
     });
 
+    const now = Date.now();
+    const active7d = users.filter((u) => u.lastActiveAt && now - new Date(u.lastActiveAt).getTime() < 7 * 86400000).length;
     const summary = {
       total: users.length,
       vip: users.filter((user) => user.vipActive).length,
       free: users.filter((user) => !user.vipActive).length,
       withStripe: users.filter((user) => Boolean(user.stripeCustomerId || user.stripeSubscriptionId)).length,
+      active7d,
     };
 
     return NextResponse.json({ users, summary });
