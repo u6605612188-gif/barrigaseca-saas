@@ -348,7 +348,7 @@ export default function MetasPage() {
             </section>
           </>
         )}
-        <MobileNav active="goals" />
+        <MobileNav active="tools" />
       </div>
     </main>
   );

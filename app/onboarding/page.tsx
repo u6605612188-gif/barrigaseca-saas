@@ -61,7 +61,7 @@ export default function OnboardingPage() {
         </div>
       </section>
 
-      <MobileNav active="calendar" />
+      <MobileNav active="plan" />
     </main>
   );
 }

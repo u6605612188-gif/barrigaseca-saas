@@ -506,7 +506,7 @@ export default function ChecklistPage() {
           </div>
         </div>
       </section>
-      <MobileNav active="checklist" />
+      <MobileNav active="tools" />
     </main>
   );
 }

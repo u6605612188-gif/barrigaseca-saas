@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import MobileNav from "@/components/MobileNav";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, Timestamp } from "firebase/firestore";
@@ -280,6 +281,7 @@ export default function VipClient() {
           </div>
         </section>
       </div>
+      <MobileNav />
     </main>
   );
 }

@@ -304,7 +304,7 @@ export default function FreePage() {
           </>
         )}
       </div>
-      <MobileNav active="calendar" />
+      <MobileNav active="plan" />
     </main>
   );
 }
