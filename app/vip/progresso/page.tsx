@@ -66,6 +66,69 @@ function isVipFromProfile(data: UserProfile) {
   return false;
 }
 
+const LOCK: Record<
+  Language,
+  {
+    kicker: string;
+    title: string;
+    desc: string;
+    benefitsTitle: string;
+    benefits: string[];
+    reassure: string;
+    cta: string;
+    free: string;
+  }
+> = {
+  pt: {
+    kicker: "PROGRESSO VIP",
+    title: "Veja sua barriga secar dia após dia",
+    desc: "O painel completo de evolução é exclusivo dos membros VIP. Acompanhe sua sequência, sua semana e cada avanço de verdade — o que te mantém firme até o resultado.",
+    benefitsTitle: "Ao virar VIP você desbloqueia hoje:",
+    benefits: [
+      "Painel de progresso completo: sequência, semana e recordes",
+      "365 dias de plano completo, sem travas",
+      "Todas as receitas com ingredientes e passo a passo",
+      "Checklist de hábitos e metas semanais",
+      "Ferramentas sem limites: IMC, água, proteína e mais",
+    ],
+    reassure: "Assinatura mensal no cartão · Cancele quando quiser",
+    cta: "Virar VIP agora",
+    free: "Ver área grátis",
+  },
+  en: {
+    kicker: "VIP PROGRESS",
+    title: "Watch your belly shrink day after day",
+    desc: "The full progress dashboard is exclusive to VIP members. Track your streak, your week and every real gain — what keeps you going until the result.",
+    benefitsTitle: "Become VIP and unlock today:",
+    benefits: [
+      "Full progress dashboard: streak, week and records",
+      "365 days of the complete plan, no locks",
+      "Every recipe with ingredients and step by step",
+      "Habit checklist and weekly goals",
+      "Unlimited tools: BMI, water, protein and more",
+    ],
+    reassure: "Monthly card subscription · Cancel anytime",
+    cta: "Become VIP now",
+    free: "See free area",
+  },
+  es: {
+    kicker: "PROGRESO VIP",
+    title: "Mira tu barriga reducirse día a día",
+    desc: "El panel completo de evolución es exclusivo de los miembros VIP. Sigue tu racha, tu semana y cada avance real — lo que te mantiene firme hasta el resultado.",
+    benefitsTitle: "Hazte VIP y desbloquea hoy:",
+    benefits: [
+      "Panel de progreso completo: racha, semana y récords",
+      "365 días del plan completo, sin bloqueos",
+      "Todas las recetas con ingredientes y paso a paso",
+      "Checklist de hábitos y metas semanales",
+      "Herramientas sin límites: IMC, agua, proteína y más",
+    ],
+    reassure: "Suscripción mensual con tarjeta · Cancela cuando quieras",
+    cta: "Hazte VIP ahora",
+    free: "Ver área gratis",
+  },
+};
+
 export default function ProgressoPage() {
   const router = useRouter();
 
@@ -280,19 +343,33 @@ export default function ProgressoPage() {
   }
 
   if (!isVip) {
+    const L = LOCK[language];
     return (
       <main style={styles.centerPage}>
         <div style={styles.bg} aria-hidden />
         <section style={styles.lock}>
-          <LanguageSwitcher language={language} onChange={setLanguage} />
-          <div style={styles.lockMedal} aria-hidden>🔒</div>
-          <h1 style={styles.lockTitle}>{t.lockedTitle}</h1>
-          <p style={styles.lockDesc}>{t.lockedDesc}</p>
-
-          <div style={styles.lockBtns}>
-            <a href="/vip" style={styles.btnPrimary}>{t.becomeVip}</a>
-            <a href="/free" style={styles.btnGhost}>{t.freeArea}</a>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <LanguageSwitcher language={language} onChange={setLanguage} />
           </div>
+
+          <div style={styles.lockMedal} aria-hidden>👑</div>
+          <div style={styles.lockKicker}>{L.kicker}</div>
+          <h1 style={styles.lockTitle}>{L.title}</h1>
+          <p style={styles.lockDesc}>{L.desc}</p>
+
+          <div style={styles.benefitsCard}>
+            <div style={styles.benefitsTitle}>{L.benefitsTitle}</div>
+            {L.benefits.map((b) => (
+              <div key={b} style={styles.benefitRow}>
+                <span style={styles.benefitCheck} aria-hidden>✓</span>
+                <span style={styles.benefitText}>{b}</span>
+              </div>
+            ))}
+          </div>
+
+          <a href="/vip" style={styles.ctaBig}>{L.cta}</a>
+          <div style={styles.reassure}>🔒 {L.reassure}</div>
+          <a href="/free" style={styles.freeLink}>{L.free}</a>
         </section>
         <MobileNav active="progress" />
       </main>
@@ -597,6 +674,85 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     justifyContent: "center",
     width: "100%",
+  },
+  lockKicker: {
+    marginTop: 10,
+    color: "#FFB637",
+    fontWeight: 950,
+    fontSize: 12,
+    letterSpacing: 2,
+  },
+  benefitsCard: {
+    marginTop: 16,
+    width: "100%",
+    textAlign: "left",
+    borderRadius: 18,
+    padding: 16,
+    background: "rgba(0,0,0,0.28)",
+    border: "1px solid rgba(255,216,107,0.22)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  benefitsTitle: {
+    color: "#FFD86B",
+    fontWeight: 950,
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  benefitRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  benefitCheck: {
+    flexShrink: 0,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#8EEA35",
+    color: "#0F1A00",
+    fontWeight: 950,
+    fontSize: 13,
+    marginTop: 1,
+  },
+  benefitText: {
+    color: "#EFE7D6",
+    fontWeight: 700,
+    lineHeight: 1.4,
+    fontSize: 14,
+  },
+  ctaBig: {
+    marginTop: 18,
+    width: "100%",
+    padding: "16px 18px",
+    borderRadius: 16,
+    border: "none",
+    background: "linear-gradient(180deg,#FFB000,#FF7A00)",
+    fontWeight: 950,
+    fontSize: 17,
+    textDecoration: "none",
+    color: "#20120A",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 12px 26px rgba(255,138,0,0.4)",
+  },
+  reassure: {
+    marginTop: 10,
+    color: "#C9C4D6",
+    fontWeight: 700,
+    fontSize: 12.5,
+  },
+  freeLink: {
+    marginTop: 12,
+    color: "#DDE7F5",
+    fontWeight: 900,
+    fontSize: 14,
+    textDecoration: "underline",
   },
   btnPrimary: {
     padding: "13px 18px",
