@@ -252,45 +252,49 @@ export default function ProgressoPage() {
   }, [goals]);
 
   if (!authReady || vipLoading) {
-    return <main style={{ padding: 28 }}>{t.loading}</main>;
+    return <main style={styles.loading}>{t.loading}</main>;
   }
 
   if (!user?.uid) {
-    return <main style={{ padding: 28 }}>{t.redirecting}</main>;
+    return <main style={styles.loading}>{t.redirecting}</main>;
   }
 
   if (err) {
     return (
-      <main style={{ padding: 28, maxWidth: 980, margin: "28px auto" }}>
-        <section style={styles.card}>
+      <main style={styles.centerPage}>
+        <div style={styles.bg} aria-hidden />
+        <section style={styles.lock}>
           <LanguageSwitcher language={language} onChange={setLanguage} />
-          <h1 style={{ margin: "12px 0 0", fontSize: 22, fontWeight: 950 }}>{t.errorTitle}</h1>
-          <p style={{ marginTop: 10, color: "#555", fontWeight: 800, lineHeight: 1.55 }}>{err}</p>
+          <div style={styles.lockMedal} aria-hidden>⚠️</div>
+          <h1 style={styles.lockTitle}>{t.errorTitle}</h1>
+          <p style={styles.lockDesc}>{err}</p>
 
-          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={styles.lockBtns}>
+            <a href="/vip" style={styles.btnPrimary}>{t.vip}</a>
             <a href="/app" style={styles.btnGhost}>{t.back}</a>
-            <a href="/vip" style={styles.btnDark}>{t.vip}</a>
           </div>
         </section>
+        <MobileNav active="progress" />
       </main>
     );
   }
 
   if (!isVip) {
     return (
-      <main style={{ padding: 28, maxWidth: 980, margin: "28px auto" }}>
+      <main style={styles.centerPage}>
+        <div style={styles.bg} aria-hidden />
         <section style={styles.lock}>
           <LanguageSwitcher language={language} onChange={setLanguage} />
-          <div style={{ marginTop: 12, fontWeight: 950, fontSize: 16 }}>{t.lockedTitle}</div>
-          <p style={{ marginTop: 8, marginBottom: 0, color: "#444", fontWeight: 700, lineHeight: 1.5 }}>
-            {t.lockedDesc}
-          </p>
+          <div style={styles.lockMedal} aria-hidden>🔒</div>
+          <h1 style={styles.lockTitle}>{t.lockedTitle}</h1>
+          <p style={styles.lockDesc}>{t.lockedDesc}</p>
 
-          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="/vip" style={styles.btnDark}>{t.becomeVip}</a>
+          <div style={styles.lockBtns}>
+            <a href="/vip" style={styles.btnPrimary}>{t.becomeVip}</a>
             <a href="/free" style={styles.btnGhost}>{t.freeArea}</a>
           </div>
         </section>
+        <MobileNav active="progress" />
       </main>
     );
   }
@@ -333,13 +337,13 @@ export default function ProgressoPage() {
             <section style={styles.card}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontWeight: 950, fontSize: 16 }}>{t.weekSummary}</div>
-                  <div style={{ marginTop: 6, color: "#555", fontWeight: 800 }}>
-                    {t.weekStarting}: <strong>{week.weekStartISO}</strong>
+                  <div style={{ fontWeight: 950, fontSize: 16, color: "#fff" }}>{t.weekSummary}</div>
+                  <div style={{ marginTop: 6, color: "#C9C4D6", fontWeight: 800 }}>
+                    {t.weekStarting}: <strong style={{ color: "#FFD86B" }}>{week.weekStartISO}</strong>
                   </div>
                 </div>
 
-                <a href="/vip/metas" style={styles.btnDark}>{t.adjustGoals}</a>
+                <a href="/vip/metas" style={styles.btnPrimary}>{t.adjustGoals}</a>
               </div>
 
               <div style={{ marginTop: 14, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
@@ -348,16 +352,16 @@ export default function ProgressoPage() {
                 <StatCard label={t.waterGoal} value={`${week.goalWaterLiters} L`} />
               </div>
 
-              <div style={{ marginTop: 12, fontSize: 12, color: "#666", fontWeight: 800, lineHeight: 1.5 }}>
+              <div style={{ marginTop: 12, fontSize: 12, color: "#9A94A6", fontWeight: 800, lineHeight: 1.5 }}>
                 {t.note}
               </div>
             </section>
 
             <section style={styles.card}>
-              <div style={{ fontWeight: 950, fontSize: 16 }}>{t.quickActions}</div>
+              <div style={{ fontWeight: 950, fontSize: 16, color: "#fff" }}>{t.quickActions}</div>
 
               <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <a href="/vip/checklist" style={styles.btnDark}>{t.openChecklist}</a>
+                <a href="/vip/checklist" style={styles.btnPrimary}>{t.openChecklist}</a>
                 <a href="/vip/metas" style={styles.btnGhost}>{t.openGoals}</a>
                 <a href="/free" style={styles.btnGhost}>{t.calendar}</a>
               </div>
@@ -399,9 +403,9 @@ function LanguageSwitcher({
 function KpiCard({ title, value, hint }: { title: string; value: string; hint: string }) {
   return (
     <div style={styles.kpi}>
-      <div style={{ fontSize: 12, fontWeight: 950, color: "#555" }}>{title}</div>
-      <div style={{ marginTop: 10, fontSize: 22, fontWeight: 950, color: "#111" }}>{value}</div>
-      <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#666" }}>{hint}</div>
+      <div style={{ fontSize: 12, fontWeight: 950, color: "#C9C4D6" }}>{title}</div>
+      <div style={{ marginTop: 10, fontSize: 22, fontWeight: 950, color: "#fff" }}>{value}</div>
+      <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#9A94A6" }}>{hint}</div>
     </div>
   );
 }
@@ -409,30 +413,45 @@ function KpiCard({ title, value, hint }: { title: string; value: string; hint: s
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div style={styles.stat}>
-      <div style={{ fontSize: 12, fontWeight: 950, color: "#555" }}>{label}</div>
-      <div style={{ marginTop: 10, fontSize: 22, fontWeight: 950, color: "#111" }}>{value}</div>
+      <div style={{ fontSize: 12, fontWeight: 950, color: "#C9C4D6" }}>{label}</div>
+      <div style={{ marginTop: 10, fontSize: 22, fontWeight: 950, color: "#FFD86B" }}>{value}</div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  loading: {
+    minHeight: "100vh",
+    padding: 28,
+    color: "#fff",
+    background: "linear-gradient(180deg,#07152B,#12101A 45%,#07070A)",
+  },
   page: {
     minHeight: "100vh",
     padding: 18,
-    background: "#0b0b0f",
+    background: "linear-gradient(180deg,#07152B,#12101A 45%,#07070A)",
     position: "relative",
     overflow: "hidden",
   },
+  centerPage: {
+    minHeight: "100vh",
+    padding: 18,
+    background: "linear-gradient(180deg,#07152B,#12101A 45%,#07070A)",
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   bg: {
-    position: "absolute",
+    position: "fixed",
     inset: 0,
     background:
-      "radial-gradient(900px 500px at 20% 25%, rgba(255,255,255,0.08), transparent 60%), radial-gradient(900px 500px at 80% 70%, rgba(255,255,255,0.06), transparent 60%)",
+      "radial-gradient(900px 500px at 80% 6%, rgba(255,214,90,0.12), transparent 55%), radial-gradient(900px 500px at 15% 75%, rgba(31,86,167,0.16), transparent 60%)",
     pointerEvents: "none",
   },
   shell: {
     width: "min(1100px, 100%)",
-    margin: "18px auto",
+    margin: "8px auto",
     position: "relative",
     zIndex: 1,
     display: "grid",
@@ -440,10 +459,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   header: {
     padding: 18,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.92)",
-    color: "#111",
+    borderRadius: 24,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "linear-gradient(160deg,#1F56A7,#1B2538 55%,#211712)",
+    color: "#fff",
   },
   topRow: {
     display: "flex",
@@ -456,43 +475,44 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     padding: "8px 12px",
     borderRadius: 999,
-    border: "1px solid rgba(17,17,17,0.10)",
-    background: "#fff",
+    border: "1px solid rgba(255,216,107,0.35)",
+    background: "rgba(255,176,0,0.15)",
     fontWeight: 950,
     fontSize: 12,
-    color: "#111",
+    color: "#FFD86B",
   },
   languageGroup: {
     display: "inline-flex",
-    gap: 6,
+    gap: 4,
     padding: 4,
     borderRadius: 999,
-    border: "1px solid rgba(17,17,17,0.10)",
-    background: "#fff",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.25)",
   },
   languageButton: {
     border: "none",
     borderRadius: 999,
     background: "transparent",
-    color: "#111",
+    color: "#fff",
     cursor: "pointer",
     fontSize: 12,
     fontWeight: 950,
-    padding: "7px 10px",
+    padding: "7px 12px",
   },
   languageButtonActive: {
-    background: "#111",
-    color: "#fff",
+    background: "#FFB637",
+    color: "#111",
   },
   h1: {
-    margin: "10px 0 6px",
-    fontSize: 34,
+    margin: "12px 0 6px",
+    fontSize: 32,
     fontWeight: 950,
-    color: "#111",
+    color: "#FFB637",
+    textShadow: "0 3px 6px rgba(0,0,0,0.5)",
   },
   sub: {
     margin: 0,
-    color: "#444",
+    color: "#C9D3E0",
     fontWeight: 700,
     lineHeight: 1.55,
     maxWidth: 820,
@@ -506,52 +526,99 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 16,
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.92)",
-    color: "#111",
+    background: "#19191F",
+    color: "#fff",
+    boxShadow: "0 8px 16px rgba(0,0,0,0.3)",
   },
   stat: {
     padding: 16,
     borderRadius: 18,
-    border: "1px solid #eee",
-    background: "#fff",
-    color: "#111",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "#101014",
+    color: "#fff",
   },
   card: {
     padding: 16,
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.92)",
-    color: "#111",
+    background: "#17161D",
+    color: "#fff",
+    boxShadow: "0 8px 16px rgba(0,0,0,0.3)",
   },
   lock: {
-    padding: 16,
-    borderRadius: 18,
-    border: "1px solid rgba(245,158,11,0.25)",
-    background: "rgba(245,158,11,0.10)",
-    maxWidth: 980,
+    position: "relative",
+    zIndex: 1,
+    padding: "26px 22px",
+    borderRadius: 26,
+    border: "1px solid rgba(255,216,107,0.4)",
+    background: "linear-gradient(160deg,#2B2118,#18161D 55%,#111017)",
+    maxWidth: 460,
+    width: "100%",
     margin: "0 auto",
-    color: "#111",
+    color: "#fff",
+    textAlign: "center",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 6,
   },
-  btnDark: {
-    padding: "12px 14px",
+  lockMedal: {
+    marginTop: 14,
+    width: 76,
+    height: 76,
+    borderRadius: 999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 34,
+    background: "radial-gradient(circle at 50% 35%, #FFF6A8, #FFC928 55%, #B96B00)",
+    border: "2px solid #FFF1A8",
+    boxShadow: "0 14px 28px rgba(0,0,0,0.4)",
+  },
+  lockTitle: {
+    margin: "8px 0 0",
+    fontSize: 24,
+    fontWeight: 950,
+    color: "#FFD86B",
+    textShadow: "0 2px 5px rgba(0,0,0,0.5)",
+  },
+  lockDesc: {
+    margin: "6px 0 0",
+    color: "#E7DFD0",
+    fontWeight: 600,
+    lineHeight: 1.55,
+    maxWidth: 360,
+  },
+  lockBtns: {
+    marginTop: 16,
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "center",
+    width: "100%",
+  },
+  btnPrimary: {
+    padding: "13px 18px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#111",
+    border: "none",
+    background: "#FF8A00",
     fontWeight: 950,
     textDecoration: "none",
     color: "#fff",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    boxShadow: "0 8px 18px rgba(255,138,0,0.3)",
   },
   btnGhost: {
-    padding: "12px 14px",
+    padding: "13px 18px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#fff",
-    fontWeight: 950,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.06)",
+    fontWeight: 900,
     textDecoration: "none",
-    color: "#111",
+    color: "#fff",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
