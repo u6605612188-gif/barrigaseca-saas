@@ -188,18 +188,6 @@ export default function VipClient() {
     }
   }
 
-  async function handlePixCheckout() {
-    if (loading) return;
-
-    if (!authReady) return;
-    if (!uid) {
-      router.push("/login");
-      return;
-    }
-
-    window.location.href = "https://www.asaas.com/c/kqiulp53k9njyilq";
-  }
-
   const primaryCtaLabel = useMemo(() => {
     if (!authReady) return t.loading;
     if (!uid) return t.signInToSubscribe;
@@ -242,7 +230,7 @@ export default function VipClient() {
             <a href="/vip/metas" style={styles.btnGhost}>{t.goals}</a>
           </div>
 
-          <div style={{ marginTop: 12, fontSize: 12, fontWeight: 900, color: "#111" }}>{accessLine}</div>
+          <div style={{ marginTop: 12, fontSize: 12, fontWeight: 900, color: "#DCCAA4" }}>{accessLine}</div>
         </header>
 
         {banner && (
@@ -257,8 +245,8 @@ export default function VipClient() {
                 banner.tone === "ok" ? "rgba(34,197,94,0.08)" : "rgba(245,158,11,0.10)",
             }}
           >
-            <div style={{ fontWeight: 950, fontSize: 14 }}>{banner.title}</div>
-            <div style={{ marginTop: 6, fontWeight: 700, color: "#333", lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 950, fontSize: 14, color: "#fff" }}>{banner.title}</div>
+            <div style={{ marginTop: 6, fontWeight: 700, color: "#E7E1D6", lineHeight: 1.5 }}>
               {banner.desc}
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -285,12 +273,6 @@ export default function VipClient() {
             {loading ? t.openingPayment : primaryCtaLabel}
           </button>
 
-          <button onClick={handlePixCheckout} disabled={loading} style={styles.payBtnPix}>
-            {loading ? t.openingPayment : t.pixPayment}
-          </button>
-
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>{t.pixNote}</div>
-
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <a href="/app" style={styles.btnLight}>{t.openApp}</a>
             <a href="/vip/progresso" style={styles.btnGhostOnDark}>{t.openProgress}</a>
@@ -305,10 +287,10 @@ export default function VipClient() {
 function Card({ title, items }: { title: string; items: readonly string[] }) {
   return (
     <div style={styles.card}>
-      <h3 style={{ marginTop: 0, fontSize: 16, fontWeight: 950, color: "#111" }}>{title}</h3>
+      <h3 style={{ marginTop: 0, fontSize: 16, fontWeight: 950, color: "#FFD86B" }}>{title}</h3>
       <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
         {items.map((x) => (
-          <li key={x} style={{ fontWeight: 800, color: "#222" }}>
+          <li key={x} style={{ fontWeight: 700, color: "#E7E1D6" }}>
             {x}
           </li>
         ))}
@@ -321,7 +303,7 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
     padding: 18,
-    background: "#0b0b0f",
+    background: "linear-gradient(180deg,#07152B,#151018 45%,#07070A)",
     position: "relative",
     overflow: "hidden",
   },
@@ -329,7 +311,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: "absolute",
     inset: 0,
     background:
-      "radial-gradient(900px 500px at 20% 25%, rgba(255,255,255,0.08), transparent 60%), radial-gradient(900px 500px at 80% 70%, rgba(255,255,255,0.06), transparent 60%)",
+      "radial-gradient(900px 500px at 80% 8%, rgba(255,214,90,0.14), transparent 55%), radial-gradient(900px 500px at 15% 70%, rgba(31,86,167,0.18), transparent 60%)",
     pointerEvents: "none",
   },
   shell: {
@@ -340,10 +322,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   header: {
     padding: 18,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.92)",
-    color: "#111",
+    borderRadius: 24,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "linear-gradient(160deg,#1F56A7,#1B2538 55%,#211712)",
+    color: "#fff",
   },
   topRow: {
     display: "flex",
@@ -356,43 +338,44 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     padding: "8px 12px",
     borderRadius: 999,
-    border: "1px solid rgba(17,17,17,0.10)",
-    background: "#fff",
+    border: "1px solid rgba(255,216,107,0.35)",
+    background: "rgba(255,176,0,0.15)",
     fontWeight: 950,
     fontSize: 12,
-    color: "#111",
+    color: "#FFD86B",
   },
   languageGroup: {
     display: "inline-flex",
     gap: 6,
     padding: 4,
     borderRadius: 999,
-    border: "1px solid rgba(17,17,17,0.10)",
-    background: "#fff",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.2)",
   },
   languageButton: {
     border: "none",
     borderRadius: 999,
     background: "transparent",
-    color: "#111",
+    color: "#fff",
     cursor: "pointer",
     fontSize: 12,
     fontWeight: 950,
     padding: "7px 10px",
   },
   languageButtonActive: {
-    background: "#111",
+    background: "#FF8A00",
     color: "#fff",
   },
   h1: {
     margin: "10px 0 6px",
     fontSize: 34,
     fontWeight: 950,
-    color: "#111",
+    color: "#FFB637",
+    textShadow: "0 3px 6px rgba(0,0,0,0.5)",
   },
   sub: {
     margin: 0,
-    color: "#444",
+    color: "#C9D3E0",
     fontWeight: 700,
     lineHeight: 1.55,
     maxWidth: 860,
@@ -401,8 +384,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 12,
     padding: 14,
     borderRadius: 18,
-    background: "rgba(255,255,255,0.92)",
-    color: "#111",
+    background: "rgba(255,255,255,0.06)",
+    color: "#fff",
   },
   grid: {
     marginTop: 12,
@@ -413,36 +396,25 @@ const styles: Record<string, React.CSSProperties> = {
   card: {
     padding: 16,
     borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.92)",
-    color: "#111",
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "#19191F",
+    color: "#fff",
+    boxShadow: "0 8px 16px rgba(0,0,0,0.3)",
   },
   pricing: {
     marginTop: 12,
     padding: 18,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "#111",
+    borderRadius: 22,
+    border: "1px solid rgba(255,216,107,0.4)",
+    background: "linear-gradient(160deg,#2B2118,#18161D 55%,#111017)",
     color: "#fff",
   },
   payBtn: {
     marginTop: 14,
     padding: 14,
     borderRadius: 14,
-    border: "1px solid #fff",
-    background: "#fff",
-    color: "#111",
-    fontWeight: 950,
-    cursor: "pointer",
-    width: "100%",
-    maxWidth: 460,
-  },
-  payBtnPix: {
-    marginTop: 10,
-    padding: 14,
-    borderRadius: 14,
-    border: "1px solid #16a34a",
-    background: "#16a34a",
+    border: "none",
+    background: "#FF8A00",
     color: "#fff",
     fontWeight: 950,
     cursor: "pointer",
@@ -452,8 +424,8 @@ const styles: Record<string, React.CSSProperties> = {
   btnDark: {
     padding: "12px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#111",
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "#2A2A31",
     fontWeight: 950,
     textDecoration: "none",
     color: "#fff",
@@ -464,11 +436,11 @@ const styles: Record<string, React.CSSProperties> = {
   btnGhost: {
     padding: "12px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#fff",
+    border: "1px solid rgba(255,255,255,0.2)",
+    background: "transparent",
     fontWeight: 950,
     textDecoration: "none",
-    color: "#111",
+    color: "#fff",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -476,11 +448,11 @@ const styles: Record<string, React.CSSProperties> = {
   btnLight: {
     padding: "12px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.20)",
-    background: "#fff",
+    border: "none",
+    background: "#8EEA35",
     fontWeight: 950,
     textDecoration: "none",
-    color: "#111",
+    color: "#102000",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -488,7 +460,7 @@ const styles: Record<string, React.CSSProperties> = {
   btnGhostOnDark: {
     padding: "12px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.20)",
+    border: "1px solid rgba(255,255,255,0.2)",
     background: "transparent",
     fontWeight: 950,
     textDecoration: "none",
