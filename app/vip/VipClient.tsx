@@ -222,8 +222,13 @@ export default function VipClient() {
             </div>
           </div>
 
-          <h1 style={styles.h1}>{t.title}</h1>
-          <p style={styles.sub}>{t.subtitle}</p>
+          <div style={styles.heroRow}>
+            <div style={styles.crown} aria-hidden>👑</div>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={styles.h1}>{t.title}</h1>
+              <p style={styles.sub}>{t.subtitle}</p>
+            </div>
+          </div>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <a href="/vip/progresso" style={styles.btnGhost}>{t.progress}</a>
@@ -368,9 +373,28 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#FF8A00",
     color: "#fff",
   },
-  h1: {
-    margin: "10px 0 6px",
+  heroRow: {
+    marginTop: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+  },
+  crown: {
+    width: 74,
+    height: 74,
+    flexShrink: 0,
+    borderRadius: 999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     fontSize: 34,
+    background: "radial-gradient(circle at 50% 35%, #FFF6A8, #FFC928 55%, #B96B00)",
+    border: "2px solid #FFF1A8",
+    boxShadow: "0 14px 28px rgba(0,0,0,0.4)",
+  },
+  h1: {
+    margin: "0 0 6px",
+    fontSize: 32,
     fontWeight: 950,
     color: "#FFB637",
     textShadow: "0 3px 6px rgba(0,0,0,0.5)",

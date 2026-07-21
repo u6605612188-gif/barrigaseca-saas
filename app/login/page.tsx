@@ -6,7 +6,6 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut,
   type User,
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
@@ -189,56 +188,45 @@ export default function LoginPage() {
     }
   }
 
-  async function handleLogout() {
-    try {
-      await signOut(auth);
-      setAuthedEmail(null);
-      setError(null);
-      setLoading(false);
-    } catch (e) {
-      setError(friendlyAuthError(formatErr(e), t.errors));
-    }
-  }
-
   if (loading) {
-    return <main style={{ padding: 32 }}>{t.loading}</main>;
+    return <main style={styles.loading}>{t.loading}</main>;
   }
 
   return (
     <main style={styles.page}>
       <div style={styles.bg} aria-hidden />
       <div style={styles.shell}>
-        <section style={styles.card}>
-          <div style={styles.topRow}>
-            <div style={styles.badge}>{t.brand}</div>
-            <div style={styles.languageGroup} aria-label="Language">
-              {languages.map((item) => (
-                <button
-                  key={item.code}
-                  type="button"
-                  onClick={() => changeLanguage(item.code)}
-                  style={{
-                    ...styles.languageButton,
-                    ...(language === item.code ? styles.languageButtonActive : null),
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+        <div style={styles.langWrap}>
+          <div style={styles.languageGroup} aria-label="Language">
+            {languages.map((item) => (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => changeLanguage(item.code)}
+                style={{
+                  ...styles.languageButton,
+                  ...(language === item.code ? styles.languageButtonActive : null),
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
+        </div>
 
-          <h1 style={styles.h1}>{mode === "login" ? t.loginTitle : t.registerTitle}</h1>
-          <p style={styles.sub}>{subtitle}</p>
+        <div style={styles.brand}>Barriga Seca</div>
+        <h1 style={styles.h1}>{mode === "login" ? t.loginTitle : t.registerTitle}</h1>
+        <p style={styles.sub}>{subtitle}</p>
 
+        <section style={styles.card}>
           {error && (
             <div style={styles.errorBox}>
-              <div style={{ fontWeight: 950, marginBottom: 6 }}>{t.errorTitle}</div>
-              <div style={{ fontWeight: 800, color: "#444", lineHeight: 1.5 }}>{error}</div>
+              <div style={{ fontWeight: 950, marginBottom: 6, color: "#FFB4B4" }}>{t.errorTitle}</div>
+              <div style={{ fontWeight: 700, color: "#F1D9D9", lineHeight: 1.5 }}>{error}</div>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ marginTop: 14, display: "grid", gap: 10 }}>
+          <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
             <label style={styles.label}>
               {t.email}
               <input
@@ -286,7 +274,10 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div style={styles.switchRow}>
+            <span style={{ color: "#C9C4D6", fontWeight: 600 }}>
+              {mode === "login" ? t.noAccount : t.hasAccount}
+            </span>
             <button
               type="button"
               onClick={() => {
@@ -295,180 +286,161 @@ export default function LoginPage() {
                 setConfirmPassword("");
                 setMode((m) => (m === "login" ? "register" : "login"));
               }}
-              style={styles.btnGhost}
+              style={styles.switchBtn}
             >
-              {mode === "login" ? t.noAccount : t.hasAccount}
-            </button>
-
-            <a href="/free" style={styles.btnGhostLink}>
-              {t.backCalendar}
-            </a>
-
-            <a href="/vip" style={styles.btnDarkLink}>
-              {t.viewVip}
-            </a>
-
-            <button type="button" onClick={handleLogout} style={styles.btnNeutral}>
-              {t.logout}
+              {mode === "login" ? t.submitRegister : t.submitLogin}
             </button>
           </div>
         </section>
+
+        <div style={styles.footerRow}>
+          <a href="/free" style={styles.btnGhostLink}>{t.backCalendar}</a>
+          <a href="/vip" style={styles.btnGoldLink}>{t.viewVip}</a>
+        </div>
       </div>
     </main>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  loading: { minHeight: "100vh", padding: 32, color: "#fff", background: "#07070A" },
   page: {
     minHeight: "100vh",
     padding: 18,
-    background: "#0b0b0f",
+    background: "linear-gradient(180deg,#07152B,#12101A 45%,#07070A)",
     position: "relative",
     overflow: "hidden",
   },
   bg: {
-    position: "absolute",
+    position: "fixed",
     inset: 0,
     background:
-      "radial-gradient(900px 500px at 20% 25%, rgba(255,255,255,0.08), transparent 60%), radial-gradient(900px 500px at 80% 70%, rgba(255,255,255,0.06), transparent 60%)",
+      "radial-gradient(900px 500px at 80% 8%, rgba(255,214,90,0.12), transparent 55%), radial-gradient(900px 500px at 15% 75%, rgba(31,86,167,0.16), transparent 60%)",
     pointerEvents: "none",
   },
   shell: {
-    width: "min(680px, 100%)",
-    margin: "40px auto",
+    width: "min(440px, 100%)",
+    margin: "6vh auto 40px",
     position: "relative",
     zIndex: 1,
   },
-  card: {
-    padding: 18,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.92)",
-    color: "#111",
-  },
-  topRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  badge: {
-    display: "inline-flex",
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(17,17,17,0.10)",
-    background: "#fff",
-    fontWeight: 950,
-    fontSize: 12,
-    color: "#111",
-  },
+  langWrap: { display: "flex", justifyContent: "flex-end", marginBottom: 14 },
   languageGroup: {
     display: "inline-flex",
-    gap: 6,
+    gap: 4,
     padding: 4,
     borderRadius: 999,
-    border: "1px solid rgba(17,17,17,0.10)",
-    background: "#fff",
+    border: "1px solid rgba(255,255,255,0.16)",
+    background: "rgba(255,255,255,0.06)",
   },
   languageButton: {
     border: "none",
     borderRadius: 999,
     background: "transparent",
-    color: "#111",
+    color: "#fff",
     cursor: "pointer",
     fontSize: 12,
     fontWeight: 950,
-    padding: "7px 10px",
+    padding: "6px 12px",
   },
-  languageButtonActive: {
-    background: "#111",
-    color: "#fff",
-  },
-  h1: {
-    margin: "10px 0 6px",
-    fontSize: 28,
+  languageButtonActive: { background: "#FFB637", color: "#111" },
+  brand: {
+    color: "#FFC33D",
+    fontSize: 15,
     fontWeight: 950,
-    color: "#111",
+    letterSpacing: 0.5,
+    textShadow: "1px 2px 4px rgba(95,36,0,0.7)",
   },
-  sub: {
-    margin: 0,
-    color: "#444",
-    fontWeight: 700,
-    lineHeight: 1.5,
+  h1: { margin: "6px 0 6px", fontSize: 30, fontWeight: 950, color: "#fff" },
+  sub: { margin: 0, color: "#C9C4D6", fontWeight: 600, lineHeight: 1.5 },
+  card: {
+    marginTop: 18,
+    padding: 18,
+    borderRadius: 22,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "#17161D",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
+    color: "#fff",
   },
   label: {
     display: "grid",
     gap: 6,
-    fontWeight: 900,
-    color: "#111",
+    fontWeight: 800,
+    color: "#D7D7DE",
     fontSize: 13,
   },
   input: {
-    padding: "12px 12px",
+    padding: "13px 12px",
     borderRadius: 12,
-    border: "1px solid rgba(17,17,17,0.14)",
+    border: "1px solid #4A4A55",
     outline: "none",
-    fontWeight: 800,
+    fontWeight: 700,
+    fontSize: 15,
+    background: "#101014",
+    color: "#fff",
   },
   btnPrimary: {
-    padding: "12px 14px",
+    marginTop: 4,
+    padding: "14px 16px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#111",
+    border: "none",
+    background: "#8EEA35",
     fontWeight: 950,
-    color: "#fff",
-    cursor: "pointer",
-  },
-  btnGhost: {
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: "2px solid #111",
-    background: "#fff",
-    color: "#111",
-    fontWeight: 950,
-    cursor: "pointer",
-    boxShadow: "0 0 0 1px rgba(17,17,17,0.04)",
-  },
-  btnNeutral: {
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#e9e9e9",
-    fontWeight: 950,
+    fontSize: 15,
     color: "#111",
     cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(142,234,53,0.3)",
   },
+  switchRow: {
+    marginTop: 14,
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap",
+  },
+  switchBtn: {
+    border: "none",
+    background: "transparent",
+    color: "#FFD86B",
+    fontWeight: 950,
+    fontSize: 14,
+    cursor: "pointer",
+    textDecoration: "underline",
+  },
+  footerRow: { marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" },
   btnGhostLink: {
-    padding: "12px 14px",
+    flex: 1,
+    padding: "13px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#fff",
-    fontWeight: 950,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.06)",
+    fontWeight: 900,
     textDecoration: "none",
-    color: "#111",
+    color: "#fff",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
   },
-  btnDarkLink: {
-    padding: "12px 14px",
+  btnGoldLink: {
+    flex: 1,
+    padding: "13px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(17,17,17,0.12)",
-    background: "#111",
+    border: "1px solid rgba(255,182,55,0.4)",
+    background: "rgba(255,182,55,0.14)",
     fontWeight: 950,
     textDecoration: "none",
-    color: "#fff",
+    color: "#FFD86B",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
   },
   errorBox: {
-    marginTop: 12,
+    marginBottom: 14,
     padding: 12,
     borderRadius: 14,
-    border: "1px solid rgba(239,68,68,0.30)",
-    background: "rgba(239,68,68,0.08)",
+    border: "1px solid rgba(239,68,68,0.35)",
+    background: "rgba(239,68,68,0.12)",
   },
 };
 
