@@ -70,6 +70,105 @@ function resolveUnlockedCycles(data: UserProfile): number {
   return flag || statusOk || untilOk ? 1 : 0;
 }
 
+const SUPPORT_WA = "351961780568";
+
+const MEMBER: Record<
+  Language,
+  {
+    badge: string;
+    title: string;
+    sub: string;
+    status: string;
+    active: string;
+    renewal: string;
+    autoRenew: string;
+    expiresOn: string;
+    noDate: string;
+    manageTitle: string;
+    manageDesc: string;
+    myProfile: string;
+    myContentTitle: string;
+    plan: string;
+    progress: string;
+    checklist: string;
+    goals: string;
+    tools: string;
+    billingTitle: string;
+    billingDesc: string;
+    contactSupport: string;
+  }
+> = {
+  pt: {
+    badge: "Minha Assinatura VIP",
+    title: "Você é VIP 🎉",
+    sub: "Acompanhe seu acesso, veja o vencimento e gerencie sua conta.",
+    status: "Status",
+    active: "VIP ativo",
+    renewal: "Renovação",
+    autoRenew: "Renovação automática",
+    expiresOn: "Vence em",
+    noDate: "Sem data definida",
+    manageTitle: "Seus dados",
+    manageDesc: "Atualize seu nome, peso e objetivo — tudo salvo na sua conta.",
+    myProfile: "Salvar meus dados",
+    myContentTitle: "Seu conteúdo VIP",
+    plan: "Plano de hoje",
+    progress: "Progresso",
+    checklist: "Checklist",
+    goals: "Metas",
+    tools: "Ferramentas",
+    billingTitle: "Pagamento e cancelamento",
+    billingDesc: "Precisa trocar o cartão ou cancelar? Fale com o suporte e resolvemos rápido.",
+    contactSupport: "Falar com o suporte",
+  },
+  en: {
+    badge: "My VIP Subscription",
+    title: "You are VIP 🎉",
+    sub: "Track your access, see the due date and manage your account.",
+    status: "Status",
+    active: "VIP active",
+    renewal: "Renewal",
+    autoRenew: "Automatic renewal",
+    expiresOn: "Due on",
+    noDate: "No date set",
+    manageTitle: "Your data",
+    manageDesc: "Update your name, weight and goal — all saved to your account.",
+    myProfile: "Save my data",
+    myContentTitle: "Your VIP content",
+    plan: "Today's plan",
+    progress: "Progress",
+    checklist: "Checklist",
+    goals: "Goals",
+    tools: "Tools",
+    billingTitle: "Billing and cancellation",
+    billingDesc: "Need to change your card or cancel? Contact support and we'll sort it out fast.",
+    contactSupport: "Contact support",
+  },
+  es: {
+    badge: "Mi Suscripción VIP",
+    title: "Eres VIP 🎉",
+    sub: "Sigue tu acceso, mira el vencimiento y gestiona tu cuenta.",
+    status: "Estado",
+    active: "VIP activo",
+    renewal: "Renovación",
+    autoRenew: "Renovación automática",
+    expiresOn: "Vence el",
+    noDate: "Sin fecha definida",
+    manageTitle: "Tus datos",
+    manageDesc: "Actualiza tu nombre, peso y objetivo — todo guardado en tu cuenta.",
+    myProfile: "Guardar mis datos",
+    myContentTitle: "Tu contenido VIP",
+    plan: "Plan de hoy",
+    progress: "Progreso",
+    checklist: "Checklist",
+    goals: "Metas",
+    tools: "Herramientas",
+    billingTitle: "Pago y cancelación",
+    billingDesc: "¿Necesitas cambiar la tarjeta o cancelar? Contacta al soporte y lo resolvemos rápido.",
+    contactSupport: "Contactar soporte",
+  },
+};
+
 export default function VipClient() {
   const [language, setLanguage] = useState<Language>(defaultLanguage);
   const t = translations[language].vip;
@@ -80,6 +179,7 @@ export default function VipClient() {
   const [email, setEmail] = useState<string | null>(null);
   const [entLoading, setEntLoading] = useState(true);
   const [unlockedCycles, setUnlockedCycles] = useState<number>(0);
+  const [vipUntilMs, setVipUntilMs] = useState<number | null>(null);
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -101,6 +201,7 @@ export default function VipClient() {
 
       if (!u?.uid) {
         setUnlockedCycles(0);
+        setVipUntilMs(null);
         setEntLoading(false);
         return;
       }
@@ -111,8 +212,11 @@ export default function VipClient() {
         const snap = await getDoc(userRef);
         const data = (snap.exists() ? (snap.data() as UserProfile) : {}) ?? {};
         setUnlockedCycles(resolveUnlockedCycles(data));
+        const until = data.vipUntil ?? data.vip_until ?? data.vipExpiresAt ?? data.vip_expires_at;
+        setVipUntilMs(asMillis(until));
       } catch {
         setUnlockedCycles(0);
+        setVipUntilMs(null);
       } finally {
         setEntLoading(false);
       }
@@ -196,6 +300,125 @@ export default function VipClient() {
     if (unlockedCycles >= 1) return t.renewing;
     return t.subscribe;
   }, [authReady, uid, entLoading, unlockedCycles, t]);
+
+  // ==== Area do membro: so quando a pessoa JA e VIP ====
+  const isVipMember = authReady && !!uid && !entLoading && unlockedCycles >= 1;
+
+  if (isVipMember) {
+    const m = MEMBER[language];
+    const loc = language === "pt" ? "pt-BR" : language === "es" ? "es-ES" : "en-US";
+    const vipDateLabel = vipUntilMs
+      ? new Intl.DateTimeFormat(loc, { dateStyle: "medium" }).format(new Date(vipUntilMs))
+      : m.noDate;
+
+    function openSupport() {
+      const msg = encodeURIComponent(
+        `Ola, sou membro VIP do Barriga Seca e preciso de ajuda com a assinatura.\nConta: ${email ?? ""}`
+      );
+      window.open(`https://wa.me/${SUPPORT_WA}?text=${msg}`, "_blank");
+    }
+
+    return (
+      <main style={styles.page}>
+        <div style={styles.bg} aria-hidden />
+
+        <div style={styles.shell}>
+          <header style={styles.header}>
+            <div style={styles.topRow}>
+              <div style={styles.badge}>{m.badge}</div>
+              <div style={styles.languageGroup} aria-label="Language">
+                {languages.map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => setLanguage(item.code)}
+                    style={{
+                      ...styles.languageButton,
+                      ...(language === item.code ? styles.languageButtonActive : null),
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.heroRow}>
+              <div style={styles.crown} aria-hidden>👑</div>
+              <div style={{ minWidth: 0 }}>
+                <h1 style={styles.h1}>{m.title}</h1>
+                <p style={styles.sub}>{m.sub}</p>
+              </div>
+            </div>
+          </header>
+
+          {banner && (
+            <section
+              style={{
+                ...styles.banner,
+                border:
+                  banner.tone === "ok"
+                    ? "1px solid rgba(34,197,94,0.25)"
+                    : "1px solid rgba(245,158,11,0.25)",
+                background:
+                  banner.tone === "ok" ? "rgba(34,197,94,0.08)" : "rgba(245,158,11,0.10)",
+              }}
+            >
+              <div style={{ fontWeight: 950, fontSize: 14, color: "#fff" }}>{banner.title}</div>
+              <div style={{ marginTop: 6, fontWeight: 700, color: "#E7E1D6", lineHeight: 1.5 }}>
+                {banner.desc}
+              </div>
+            </section>
+          )}
+
+          <section style={styles.grid}>
+            <div style={styles.card}>
+              <div style={memberStyles.label}>{m.status}</div>
+              <div style={{ ...memberStyles.value, color: "#8EEA35" }}>✅ {m.active}</div>
+            </div>
+            <div style={styles.card}>
+              <div style={memberStyles.label}>{vipUntilMs ? m.expiresOn : m.renewal}</div>
+              <div style={{ ...memberStyles.value, color: "#FFD86B" }}>
+                {vipUntilMs ? vipDateLabel : m.autoRenew}
+              </div>
+            </div>
+          </section>
+
+          <section style={styles.pricing}>
+            <div style={{ fontSize: 18, fontWeight: 950, color: "#FFD86B" }}>{m.manageTitle}</div>
+            <div style={{ marginTop: 8, fontWeight: 700, color: "#E7E1D6", lineHeight: 1.5 }}>
+              {m.manageDesc}
+            </div>
+            <a href="/conta" style={{ ...styles.btnLight, marginTop: 14, width: "100%", maxWidth: 460 }}>
+              {m.myProfile}
+            </a>
+          </section>
+
+          <section style={styles.card}>
+            <div style={{ fontSize: 16, fontWeight: 950, color: "#fff" }}>{m.myContentTitle}</div>
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <a href="/free" style={styles.btnDark}>{m.plan}</a>
+              <a href="/vip/progresso" style={styles.btnDark}>{m.progress}</a>
+              <a href="/vip/checklist" style={styles.btnDark}>{m.checklist}</a>
+              <a href="/vip/metas" style={styles.btnDark}>{m.goals}</a>
+              <a href="/ferramentas" style={styles.btnDark}>{m.tools}</a>
+            </div>
+          </section>
+
+          <section style={styles.card}>
+            <div style={{ fontSize: 16, fontWeight: 950, color: "#fff" }}>{m.billingTitle}</div>
+            <div style={{ marginTop: 8, fontWeight: 700, color: "#C9C4D6", lineHeight: 1.5 }}>
+              {m.billingDesc}
+            </div>
+            <button type="button" onClick={openSupport} style={{ ...styles.btnGhost, marginTop: 12, cursor: "pointer" }}>
+              {m.contactSupport}
+            </button>
+          </section>
+        </div>
+        <MobileNav />
+      </main>
+    );
+  }
 
   return (
     <main style={styles.page}>
@@ -495,4 +718,9 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
   },
+};
+
+const memberStyles: Record<string, React.CSSProperties> = {
+  label: { color: "#C9C4D6", fontSize: 12, fontWeight: 950 },
+  value: { marginTop: 10, fontSize: 22, fontWeight: 950, color: "#fff", wordBreak: "break-word" },
 };
